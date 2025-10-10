@@ -1,5 +1,6 @@
-# netnotes: widow-manager
+# netnotes: Widow
 
+Plugin manager and updater for netnotes
 
 
 Credits
