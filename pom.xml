@@ -10,6 +10,8 @@
         <maven.compiler.source>21</maven.compiler.source>
         <maven.compiler.target>21</maven.compiler.target>
         <exec.mainClass>io.netnotes.Main</exec.mainClass>
+        <javafx.version>24</javafx.version>
+        <javafx.platform>${os.detected.classifier}</javafx.platform>
     </properties>
 
     <dependencies>
@@ -33,23 +35,24 @@
             <version>1.18</version>
         </dependency>
 
-        <dependency>
+         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-swing</artifactId>
-            <version>26-ea+10</version>
+            <version>${javafx.version}</version>
         </dependency>
 
 
+    
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-controls</artifactId>
-            <version>26-ea+10</version>
+            <version>${javafx.version}</version>
         </dependency>
 
         <dependency>
             <groupId>org.openjfx</groupId>
             <artifactId>javafx-base</artifactId>
-            <version>26-ea+10</version>
+            <version>${javafx.version}</version>
         </dependency>
         
 
@@ -57,7 +60,16 @@
     </dependencies>
     
         <build>
+            <extensions>
+                <extension>
+                    <groupId>kr.motd.maven</groupId>
+                    <artifactId>os-maven-plugin</artifactId>
+                    <version>1.7.1</version>
+                </extension>
+            </extensions>
+
             <plugins>
+ 
                  <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
@@ -72,9 +84,11 @@
                     <artifactId>javafx-maven-plugin</artifactId>
                     <version>0.0.8</version>
                     <configuration>
-                    <mainClass>com.netnotes.Main</mainClass>
+                        <mainClass>io.netnotes.Main</mainClass>
                     </configuration>
                 </plugin>
+
+   
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>

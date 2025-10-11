@@ -2,7 +2,9 @@ package io.netnotes.gui.fx.app;
 
 import java.io.IOException;
 
+import io.netnotes.engine.noteBytes.NoteBytesEphemeral;
 import io.netnotes.engine.noteFiles.SettingsData;
+import io.netnotes.gui.fx.components.PassField;
 import io.netnotes.gui.fx.components.notifications.Alerts;
 import io.netnotes.gui.fx.components.stages.PasswordStageHelpers;
 import javafx.application.Application;
@@ -31,11 +33,23 @@ public class WidowApp extends Application {
 
    
     private void login(Stage appStage){
+        
          PasswordStageHelpers.enterPassword("Login - " + FxResourceFactory.APP_NAME, FxResourceFactory.icon, 
             FxResourceFactory.logo, appStage, 
             onClose->{ shutdownNow(); }, 
             onEnter->{
-                
+                Object source = onEnter.getSource();
+                if(source instanceof PassField){
+                    try(
+                        PassField passField = (PassField) source;
+                        NoteBytesEphemeral password = passField.getEphemeralPassword();
+                    ){
+                        SettingsData settingsData = SettingsData.readSettings(password);
+                    }catch(Exception e){
+                        Alerts.showAndWaitErrorAlert("Fatal Error",  "Settings data is inaccessible:\n\t\t" + e.toString(), 
+                            appStage,ButtonType.CLOSE);
+                    }
+                }
             }
         );
     }
