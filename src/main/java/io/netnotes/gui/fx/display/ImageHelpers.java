@@ -1376,7 +1376,7 @@ public class ImageHelpers {
     /**
      * Helper method for bilinear interpolation
      */
-    private static int bilinearInterpolate(int rgb00, int rgb10, int rgb01, int rgb11, 
+    public static int bilinearInterpolate(int rgb00, int rgb10, int rgb01, int rgb11, 
                                         double xWeight, double yWeight) {
         int a00 = (rgb00 >> 24) & 0xFF;
         int r00 = (rgb00 >> 16) & 0xFF;
@@ -1445,7 +1445,7 @@ public class ImageHelpers {
         return scaleImage(src, newWidth, newHeight, algorithm);
     }
 
-    private static int nextPowerOfTwo(int n) {
+    public static int nextPowerOfTwo(int n) {
         n--;
         n |= n >> 1;
         n |= n >> 2;
@@ -1666,7 +1666,7 @@ public class ImageHelpers {
 
     // Helper methods
 
-    private static BufferedImage blendForSeamless(BufferedImage img1, BufferedImage img2) {
+    public static BufferedImage blendForSeamless(BufferedImage img1, BufferedImage img2) {
         int width = img1.getWidth();
         int height = img1.getHeight();
         BufferedImage result = new BufferedImage(width, height, img1.getType());
@@ -1699,7 +1699,7 @@ public class ImageHelpers {
         return result;
     }
 
-    private static BufferedImage applyNoiseVariation(BufferedImage src, Random random, float strength) {
+    public static BufferedImage applyNoiseVariation(BufferedImage src, Random random, float strength) {
         int width = src.getWidth();
         int height = src.getHeight();
         BufferedImage result = new BufferedImage(width, height, src.getType());
@@ -1727,7 +1727,7 @@ public class ImageHelpers {
         return result;
     }
 
-    private static BufferedImage applyColorShift(BufferedImage src, Random random, float strength) {
+    public static BufferedImage applyColorShift(BufferedImage src, Random random, float strength) {
         int width = src.getWidth();
         int height = src.getHeight();
         BufferedImage result = new BufferedImage(width, height, src.getType());
@@ -1747,7 +1747,7 @@ public class ImageHelpers {
         return result;
     }
 
-    private static BufferedImage applyMicroDisplacement(BufferedImage src, Random random, int maxDisplacement) {
+    public static BufferedImage applyMicroDisplacement(BufferedImage src, Random random, int maxDisplacement) {
         int width = src.getWidth();
         int height = src.getHeight();
         BufferedImage result = new BufferedImage(width, height, src.getType());
@@ -1767,7 +1767,7 @@ public class ImageHelpers {
         return result;
     }
 
-    private static BufferedImage rotateImage(BufferedImage src, double angle) {
+    public static BufferedImage rotateImage(BufferedImage src, double angle) {
         int width = src.getWidth();
         int height = src.getHeight();
         BufferedImage result = new BufferedImage(width, height, src.getType());
@@ -1781,7 +1781,7 @@ public class ImageHelpers {
         return result;
     }
 
-    private static int blendRGBA(int rgb1, int rgb2, double factor) {
+    public static int blendRGBA(int rgb1, int rgb2, double factor) {
         int a1 = (rgb1 >> 24) & 0xFF;
         int r1 = (rgb1 >> 16) & 0xFF;
         int g1 = (rgb1 >> 8) & 0xFF;
@@ -1800,7 +1800,7 @@ public class ImageHelpers {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
-    private static int shiftHSB(int rgb, float hueShift, float satShift, float briShift) {
+    public static int shiftHSB(int rgb, float hueShift, float satShift, float briShift) {
         int a = (rgb >> 24) & 0xFF;
         int r = (rgb >> 16) & 0xFF;
         int g = (rgb >> 8) & 0xFF;
@@ -1818,7 +1818,7 @@ public class ImageHelpers {
         return (a << 24) | (newRgb & 0xFFFFFF);
     }
 
-    private static int applyNoiseColorShift(int rgb, double noise, float strength) {
+    public static int applyNoiseColorShift(int rgb, double noise, float strength) {
         int a = (rgb >> 24) & 0xFF;
         int r = (rgb >> 16) & 0xFF;
         int g = (rgb >> 8) & 0xFF;
@@ -1834,37 +1834,15 @@ public class ImageHelpers {
     }
 
     // Simplified Simplex noise implementation
-    private static double simplexNoise(double x, double y) {
+    public static double simplexNoise(double x, double y) {
         // This is a simplified version - for production use, consider a full implementation
         return (Math.sin(x * 12.9898) * Math.cos(y * 78.233) * 43758.5453) % 1.0;
     }
 
 
-    public static BufferedImage greyScaleImage(BufferedImage img) {
-
-        int height = img.getHeight();
-        int width = img.getWidth();
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int p = img.getRGB(x, y);
-
-                int a = (p >> 24) & 0xff;
-                int r = (p >> 16) & 0xff;
-                int g = (p >> 8) & 0xff;
-                int b = p & 0xff;
-
-                //calculate average
-                int avg = (r + g + b) / 3;
-
-                //replace RGB value with avg
-                p = (a << 24) | (avg << 16) | (avg << 8) | avg;
-
-                img.setRGB(x, y, p);
-            }
-        }
-
-        return img;
+   
+    public static int clampRGB(int val) {
+        return Math.max(0, Math.min(255, val));
     }
 
 }

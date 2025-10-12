@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components;
+package io.netnotes.gui.fx.components.buttons;
 
 import io.netnotes.gui.fx.app.FxResourceFactory;
 import javafx.scene.control.Button;

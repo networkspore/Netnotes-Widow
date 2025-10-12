@@ -1,25 +1,25 @@
-package io.netnotes.gui.fx.components;
+package io.netnotes.gui.fx.components.fields;
 
 import java.nio.charset.StandardCharsets;
 
 import io.netnotes.engine.noteBytes.NoteBytesEphemeral;
+import io.netnotes.gui.fx.app.FxResourceFactory;
 import io.netnotes.gui.fx.components.notifications.Alerts;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.PasswordField;
+import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 
-public class PassField extends PasswordField implements AutoCloseable {
-    private static final int MAX_PASSWORD_LENGTH = 256;
-    private static final int MAX_KEYSTROKE_COUNT = 128;
-    private static final String FOCUSED_CHAR = "▮";
-    private static final String UNFOCUSED_CHAR = "▯";
-    
-    private NoteBytesEphemeral passwordBytes = new NoteBytesEphemeral(new byte[MAX_PASSWORD_LENGTH]);
+public class PassField extends TextField implements AutoCloseable {
+    public static final int MAX_PASSWORD_BYTE_LENGTH = 256;
+    public static final int MAX_KEYSTROKE_COUNT = 128;
+    public static final String FOCUSED_CHAR = "▮";
+    public static final String UNFOCUSED_CHAR = "▯";
+
+    private NoteBytesEphemeral passwordBytes = new NoteBytesEphemeral(new byte[MAX_PASSWORD_BYTE_LENGTH]);
     private byte[] keystrokeLengths = new byte[MAX_KEYSTROKE_COUNT];
     private int currentLength = 0; // Total bytes used
     private int keystrokeCount = 0; // Number of keystrokes
-    private Runnable onCloseRunnable = null;
     private Runnable onEscapeRunnable = null;
     
     public PassField() {
@@ -58,17 +58,12 @@ public class PassField extends PasswordField implements AutoCloseable {
             updateDisplay();
             event.consume();
         } else if (keyCode == KeyCode.ESCAPE) {
-            // Clear all input
-            clearInput();
-            updateDisplay();
+            escape();
             event.consume();
-            if(onEscapeRunnable != null){
-                onEscapeRunnable.run();
-            }
-        } else if (keyCode == KeyCode.U && event.isControlDown()) {
+              
+        } else if (FxResourceFactory.KEY_COMB_CTL_U.match(event)) {
             // Ctrl+U: Unix-style clear line
-            clearInput();
-            updateDisplay();
+            clear();
             event.consume();
         } else if (keyCode == KeyCode.ENTER || keyCode == KeyCode.TAB) {
             // Allow navigation keys to pass through
@@ -101,8 +96,8 @@ public class PassField extends PasswordField implements AutoCloseable {
             return;
         }
         
-        if (currentLength + charBytes.length > MAX_PASSWORD_LENGTH) {
-            Alerts.showAndWaitErrorAlert("Input Limit Reached", "Password size " + MAX_PASSWORD_LENGTH + " reached.",
+        if (currentLength + charBytes.length > MAX_PASSWORD_BYTE_LENGTH) {
+            Alerts.showAndWaitErrorAlert("Input Limit Reached", "Password size " + MAX_PASSWORD_BYTE_LENGTH + " reached.",
                 getScene().getWindow(), ButtonType.OK);
             event.consume();
             return;
@@ -117,9 +112,18 @@ public class PassField extends PasswordField implements AutoCloseable {
         updateDisplay();
         event.consume();
     }
+
+    public void escape(){
+        // Clear all input
+        clearInput();
+        updateDisplay();
+      
+        if(onEscapeRunnable != null){
+            onEscapeRunnable.run();
+        }
+    }
     
     private void clearInput() {
-        // Zero out all password bytes
         passwordBytes.close();
         // Clear keystroke lengths
         for (int i = 0; i < keystrokeCount; i++) {
@@ -174,11 +178,9 @@ public class PassField extends PasswordField implements AutoCloseable {
         return passwordBytes.copyOf(currentLength);
     }
 
-    public void setOnClose(Runnable onClose){
-        onCloseRunnable = onClose;
-    }
+   
 
-    public void onEscapeRunnable(Runnable onEscape){
+    public void setOnEscape(Runnable onEscape){
         onEscapeRunnable = onEscape;
     }
     
@@ -191,9 +193,6 @@ public class PassField extends PasswordField implements AutoCloseable {
     // Destroys the password (close calls clear)
     @Override
     public void close() {
-        clear();
-        if(onCloseRunnable != null){
-            onCloseRunnable.run();
-        }
+        escape();
     }
 }

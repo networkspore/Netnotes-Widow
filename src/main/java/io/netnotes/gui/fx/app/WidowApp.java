@@ -1,67 +1,42 @@
 package io.netnotes.gui.fx.app;
 
-import java.io.IOException;
-
-import io.netnotes.engine.noteBytes.NoteBytesEphemeral;
 import io.netnotes.engine.noteFiles.SettingsData;
-import io.netnotes.gui.fx.components.PassField;
-import io.netnotes.gui.fx.components.notifications.Alerts;
-import io.netnotes.gui.fx.components.stages.PasswordStageHelpers;
-import javafx.application.Application;
-import javafx.application.Platform;
-import javafx.scene.control.ButtonType;
+import javafx.application.HostServices;
+import javafx.application.Application.Parameters;
 import javafx.stage.Stage;
 
-public class WidowApp extends Application {
+public class WidowApp {
 
-    Stage m_appStage = null;
-    
-    @Override
-    public void start(Stage appStage) {
-        try{
-            boolean isSettingsData = SettingsData.isSettingsData();
-            if(isSettingsData){
-                login(appStage);
-            }else{
-                intializeSettings(appStage);
-            }
-        }catch(IOException e){
-            Alerts.showAndWaitErrorAlert("Critical Failure", e.toString(), null, ButtonType.CLOSE);
-            shutdownNow();
+    private final AppInterface m_appInterface;
+    private final Stage m_appStage;
+    private final SettingsData m_settingsData;
+
+    private boolean m_isStarted = false;
+
+    public WidowApp(SettingsData settingsData, Stage appStage, AppInterface appInterface){
+        m_appStage = appStage;
+        m_appInterface = appInterface;
+        m_settingsData = settingsData;
+    }
+
+    public void start(){
+        if(!m_isStarted){
+            m_isStarted = true;
+            setAppStage();
         }
     }
 
-   
-    private void login(Stage appStage){
+    public void stop(){
+
+    }
+
+    private void setAppStage(){
         
-         PasswordStageHelpers.enterPassword("Login - " + FxResourceFactory.APP_NAME, FxResourceFactory.icon, 
-            FxResourceFactory.logo, appStage, 
-            onClose->{ shutdownNow(); }, 
-            onEnter->{
-                Object source = onEnter.getSource();
-                if(source instanceof PassField){
-                    try(
-                        PassField passField = (PassField) source;
-                        NoteBytesEphemeral password = passField.getEphemeralPassword();
-                    ){
-                        SettingsData settingsData = SettingsData.readSettings(password);
-                    }catch(Exception e){
-                        Alerts.showAndWaitErrorAlert("Fatal Error",  "Settings data is inaccessible:\n\t\t" + e.toString(), 
-                            appStage,ButtonType.CLOSE);
-                    }
-                }
-            }
-        );
     }
 
-    private void intializeSettings(Stage appStage){
-
+    public void shutdownNow(){
+        m_appInterface.shutdownNow();
     }
 
-
-    public static void shutdownNow() {
-        Platform.exit();
-        System.exit(0);
-    }
-
+   
 }

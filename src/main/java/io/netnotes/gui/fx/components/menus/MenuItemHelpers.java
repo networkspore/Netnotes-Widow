@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components;
+package io.netnotes.gui.fx.components.menus;
 
 import javafx.collections.ObservableList;
 import javafx.scene.control.MenuItem;

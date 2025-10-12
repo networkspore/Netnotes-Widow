@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components;
+package io.netnotes.gui.fx.components.buttons;
 
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;

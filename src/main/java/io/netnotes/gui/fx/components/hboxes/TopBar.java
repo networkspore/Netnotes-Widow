@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components;
+package io.netnotes.gui.fx.components.hboxes;
 
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -13,6 +13,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseEvent;
 import io.netnotes.gui.fx.app.FxResourceFactory;
+import io.netnotes.gui.fx.components.buttons.IconButton;
 import javafx.event.EventHandler;
 
 public class TopBar extends HBox {
