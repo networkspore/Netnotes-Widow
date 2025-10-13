@@ -45,7 +45,9 @@ public class ImageHelpers {
         NEAREST_NEIGHBOR,
         BILINEAR,
         BICUBIC,
-        AREA_AVERAGING
+        AREA_AVERAGING,
+        LANCZOS,
+        MITCHELL_NETRAVALI
     }
 
     public static class ImageEncoding {
@@ -1152,12 +1154,15 @@ public class ImageHelpers {
         switch (algorithm) {
             case NEAREST_NEIGHBOR:
                 return scaleNearestNeighbor(src, targetWidth, targetHeight);
-            case BILINEAR:
-                return scaleBilinear(src, targetWidth, targetHeight);
             case BICUBIC:
                 return scaleBicubic(src, targetWidth, targetHeight);
             case AREA_AVERAGING:
                 return scaleAreaAveraging(src, targetWidth, targetHeight);
+            case LANCZOS:
+                return LanczosScaling.scaleLanczos(src, targetWidth, targetHeight);
+            case MITCHELL_NETRAVALI:
+                return MitchellScaling.scaleMitchell(src, targetWidth, targetHeight);
+            case BILINEAR:
             default:
                 return scaleBilinear(src, targetWidth, targetHeight);
         }
@@ -1845,4 +1850,5 @@ public class ImageHelpers {
         return Math.max(0, Math.min(255, val));
     }
 
+    
 }

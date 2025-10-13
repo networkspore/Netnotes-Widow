@@ -41,22 +41,26 @@ public class BufferedMenuButton extends MenuButton {
         enablePressedEffects();
     }
 
-    public void disablePressedEffects() {
+    public void disableDefaultPressedEffects() {
         setOnMousePressed(null);
         setOnMouseReleased(null);
         m_imgBufView.removeEffect(BufferedButton.ON_MOUSE_PRESSED_EFFECT_ID); 
         m_isPressedEffects = false;
     }
-    
+
+    //show();
     public void enablePressedEffects(){
-        setOnMousePressed((event) -> {
-            m_imgBufView.applyBrightnessEffect(BufferedButton.ON_MOUSE_PRESSED_EFFECT_ID, BufferedButton.DEFAULT_DARKEN_AMOUNT);
-            show();
-        });
-        setOnMouseReleased((event) -> {
-            m_imgBufView.removeEffect(BufferedButton.ON_MOUSE_PRESSED_EFFECT_ID);
-        });
+        setOnMousePressed((event) ->defaultPressedEffects());
+        setOnMouseReleased((event) -> defaultOnReleaseEffects());
         m_isPressedEffects = true;
+    }
+
+    protected void defaultPressedEffects(){
+        m_imgBufView.applyBrightnessEffect(BufferedButton.ON_MOUSE_PRESSED_EFFECT_ID, BufferedButton.DEFAULT_DARKEN_AMOUNT);
+    }
+
+    protected void defaultOnReleaseEffects(){
+        m_imgBufView.removeEffect(BufferedButton.ON_MOUSE_PRESSED_EFFECT_ID);
     }
 
     
