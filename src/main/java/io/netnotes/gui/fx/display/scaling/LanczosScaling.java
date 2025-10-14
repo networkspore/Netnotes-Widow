@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display;
+package io.netnotes.gui.fx.display.scaling;
 
 import java.awt.image.BufferedImage;
 import java.math.BigDecimal;

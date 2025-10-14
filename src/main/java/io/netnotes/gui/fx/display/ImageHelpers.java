@@ -1,6 +1,5 @@
 package io.netnotes.gui.fx.display;
 
-import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -11,6 +10,8 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
@@ -25,6 +26,7 @@ import javax.imageio.ImageWriter;
 
 import io.netnotes.engine.utils.HashData;
 import io.netnotes.gui.fx.app.FxResourceFactory;
+import io.netnotes.gui.fx.display.scaling.ScalingUtils;
 import javafx.concurrent.WorkerStateEvent;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.event.EventHandler;
@@ -1051,415 +1053,14 @@ public class ImageHelpers {
     }
 
    
-
-    
-    public static BufferedImage fastScale(BufferedImage src, int w, int h)
-    {
-        BufferedImage img =  new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
-        int x, y;
-        int ww = src.getWidth();
-        int hh = src.getHeight();
-        int[] ys = new int[h];
-        
-        for (y = 0; y < h; y++){
-            ys[y] = y * hh / h;
-        }
-        
-        for (x = 0; x < w; x++) {
-            int newX = x * ww / w;
-            for (y = 0; y < h; y++) {
-                int col = src.getRGB(newX, ys[y]);
-                img.setRGB(x, y, col);
-            }
-        }
-        
-        return img;
-    }
-
-    public static BufferedImage resizeImage(BufferedImage buf, int width, int height) {
-        final BufferedImage bufImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        final Graphics2D g2 = bufImage.createGraphics();
-        g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
-        g2.drawImage(buf, 0, 0, width, height, null);
-        g2.dispose();
-       
-        return bufImage;
-    }
-    
-
-
-    public static BufferedImage resizeImage(BufferedImage buf, int width, int height, boolean maintainRatio){
-        if(!maintainRatio){
-            return resizeImage(buf, width, height);  
-        }
-        if(buf.getWidth() == buf.getHeight()){
-            int size = width < height ? width : height;
-
-            return resizeImage(buf, size, size);
-        }else{
-            double wR = buf.getWidth() / width;
-            double hR = buf.getHeight() / height;
-            boolean gT = wR > 1 || hR > 1;
-
-             if(gT ? wR < hR : wR > hR){
-                wR = 1 /wR;
-                return resizeImage(buf, (int)(wR * buf.getWidth()), (int)(wR * buf.getHeight()));
-             }else{
-                hR = 1 / hR;
-                return resizeImage(buf, (int)(hR * buf.getWidth()), (int)(hR * buf.getHeight()));
-             }
-        }  
-    }
-
-    public static Dimension getScaledDimension(Dimension imgSize, Dimension boundary) {
-        
-        int original_width = imgSize.width;
-        int original_height = imgSize.height;
-        int bound_width = boundary.width;
-        int bound_height = boundary.height;
-        int new_width = original_width;
-        int new_height = original_height;
-    
-        // first check if we need to scale width
-        if (original_width > bound_width) {
-            //scale width to fit
-            new_width = bound_width;
-            //scale height to maintain aspect ratio
-            new_height = (new_width * original_height) / original_width;
-        }
-    
-        // then check if we need to scale even with the new height
-        if (new_height > bound_height) {
-            //scale height to fit instead
-            new_height = bound_height;
-            //scale width to maintain aspect ratio
-            new_width = (new_height * original_width) / original_height;
-        }
-    
-        return new Dimension(new_width, new_height);
-    }
-
-    
-    // Enhanced scaling methods for NoteBytesImage class
-
-    /**
-     * Scale image using specified algorithm with quality control
-     */
-    public static BufferedImage scaleImage(BufferedImage src, int targetWidth, int targetHeight, 
-                                        ScalingAlgorithm algorithm) {
-        if (src == null || targetWidth <= 0 || targetHeight <= 0) {
-            throw new IllegalArgumentException("Invalid source image or dimensions");
-        }
-        
-        switch (algorithm) {
-            case NEAREST_NEIGHBOR:
-                return scaleNearestNeighbor(src, targetWidth, targetHeight);
-            case BICUBIC:
-                return scaleBicubic(src, targetWidth, targetHeight);
-            case AREA_AVERAGING:
-                return scaleAreaAveraging(src, targetWidth, targetHeight);
-            case LANCZOS:
-                return LanczosScaling.scaleLanczos(src, targetWidth, targetHeight);
-            case MITCHELL_NETRAVALI:
-                return MitchellScaling.scaleMitchell(src, targetWidth, targetHeight);
-            case BILINEAR:
-            default:
-                return scaleBilinear(src, targetWidth, targetHeight);
-        }
-    }
-
-    /**
-     * Scale with aspect ratio preservation
-     */
-    public static BufferedImage scaleWithAspectRatio(BufferedImage src, int maxWidth, int maxHeight, 
-                                                    ScalingAlgorithm algorithm) {
-        Dimension scaled = getScaledDimension(
-            new Dimension(src.getWidth(), src.getHeight()),
-            new Dimension(maxWidth, maxHeight)
-        );
-        return scaleImage(src, scaled.width, scaled.height, algorithm);
-    }
-
-    /**
-     * Nearest neighbor scaling - fast but pixelated
-     */
-    public static BufferedImage scaleNearestNeighbor(BufferedImage src, int targetWidth, int targetHeight) {
-        BufferedImage result = new BufferedImage(targetWidth, targetHeight, src.getType());
-        
-        int srcWidth = src.getWidth();
-        int srcHeight = src.getHeight();
-        
-        double xRatio = (double) srcWidth / targetWidth;
-        double yRatio = (double) srcHeight / targetHeight;
-        
-        for (int y = 0; y < targetHeight; y++) {
-            for (int x = 0; x < targetWidth; x++) {
-                int srcX = (int) (x * xRatio);
-                int srcY = (int) (y * yRatio);
-                
-                // Clamp to source bounds
-                srcX = Math.min(srcX, srcWidth - 1);
-                srcY = Math.min(srcY, srcHeight - 1);
-                
-                result.setRGB(x, y, src.getRGB(srcX, srcY));
-            }
-        }
-        
-        return result;
-    }
-
-    /**
-     * Bilinear interpolation scaling - good quality/performance balance
-     */
-    public static BufferedImage scaleBilinear(BufferedImage src, int targetWidth, int targetHeight) {
-        BufferedImage result = new BufferedImage(targetWidth, targetHeight, src.getType());
-        
-        int srcWidth = src.getWidth();
-        int srcHeight = src.getHeight();
-        
-        double xRatio = (double) (srcWidth - 1) / targetWidth;
-        double yRatio = (double) (srcHeight - 1) / targetHeight;
-        
-        for (int y = 0; y < targetHeight; y++) {
-            for (int x = 0; x < targetWidth; x++) {
-                double srcX = x * xRatio;
-                double srcY = y * yRatio;
-                
-                int x1 = (int) srcX;
-                int y1 = (int) srcY;
-                int x2 = Math.min(x1 + 1, srcWidth - 1);
-                int y2 = Math.min(y1 + 1, srcHeight - 1);
-                
-                double xWeight = srcX - x1;
-                double yWeight = srcY - y1;
-                
-                int rgb = bilinearInterpolate(
-                    src.getRGB(x1, y1), src.getRGB(x2, y1),
-                    src.getRGB(x1, y2), src.getRGB(x2, y2),
-                    xWeight, yWeight
-                );
-                
-                result.setRGB(x, y, rgb);
-            }
-        }
-        
-        return result;
-    }
-
-    /**
-     * Bicubic scaling using Graphics2D - high quality
-     */
-    public static BufferedImage scaleBicubic(BufferedImage src, int targetWidth, int targetHeight) {
-        BufferedImage result = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g2d = result.createGraphics();
-        
-        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        
-        g2d.drawImage(src, 0, 0, targetWidth, targetHeight, null);
-        g2d.dispose();
-        
-        return result;
-    }
-
-    /**
-     * Area averaging for downscaling - reduces aliasing
-     */
-    public static BufferedImage scaleAreaAveraging(BufferedImage src, int targetWidth, int targetHeight) {
-        // For upscaling, fall back to bilinear
-        if (targetWidth > src.getWidth() || targetHeight > src.getHeight()) {
-            return scaleBilinear(src, targetWidth, targetHeight);
-        }
-        
-        BufferedImage result = new BufferedImage(targetWidth, targetHeight, src.getType());
-        
-        double xRatio = (double) src.getWidth() / targetWidth;
-        double yRatio = (double) src.getHeight() / targetHeight;
-        
-        for (int y = 0; y < targetHeight; y++) {
-            for (int x = 0; x < targetWidth; x++) {
-                int srcX1 = (int) (x * xRatio);
-                int srcY1 = (int) (y * yRatio);
-                int srcX2 = (int) ((x + 1) * xRatio);
-                int srcY2 = (int) ((y + 1) * yRatio);
-                
-                srcX2 = Math.min(srcX2, src.getWidth());
-                srcY2 = Math.min(srcY2, src.getHeight());
-                
-                long totalR = 0, totalG = 0, totalB = 0, totalA = 0;
-                int pixelCount = 0;
-                
-                for (int sy = srcY1; sy < srcY2; sy++) {
-                    for (int sx = srcX1; sx < srcX2; sx++) {
-                        int rgb = src.getRGB(sx, sy);
-                        totalA += (rgb >> 24) & 0xFF;
-                        totalR += (rgb >> 16) & 0xFF;
-                        totalG += (rgb >> 8) & 0xFF;
-                        totalB += rgb & 0xFF;
-                        pixelCount++;
-                    }
-                }
-                
-                if (pixelCount > 0) {
-                    int avgA = (int) (totalA / pixelCount);
-                    int avgR = (int) (totalR / pixelCount);
-                    int avgG = (int) (totalG / pixelCount);
-                    int avgB = (int) (totalB / pixelCount);
-                    
-                    int avgRGB = (avgA << 24) | (avgR << 16) | (avgG << 8) | avgB;
-                    result.setRGB(x, y, avgRGB);
-                }
-            }
-        }
-        
-        return result;
-    }
-
-    /**
-     * Progressive scaling for large size differences - better quality
-     */
-    public static BufferedImage scaleProgressive(BufferedImage src, int targetWidth, int targetHeight, 
-                                            ScalingAlgorithm algorithm) {
-        int srcWidth = src.getWidth();
-        int srcHeight = src.getHeight();
-        
-        // If scaling down by more than 50%, do it progressively
-        if (targetWidth < srcWidth * 0.5 || targetHeight < srcHeight * 0.5) {
-            BufferedImage current = src;
-            
-            while (current.getWidth() > targetWidth * 2 || current.getHeight() > targetHeight * 2) {
-                int newWidth = Math.max(current.getWidth() / 2, targetWidth);
-                int newHeight = Math.max(current.getHeight() / 2, targetHeight);
-                current = scaleImage(current, newWidth, newHeight, algorithm);
-            }
-            
-            // Final scale to exact target
-            return scaleImage(current, targetWidth, targetHeight, algorithm);
-        } else {
-            return scaleImage(src, targetWidth, targetHeight, algorithm);
-        }
-    }
-
-    /**
-     * Scale to fit within bounds while maintaining aspect ratio
-     */
-    public static BufferedImage scaleToFit(BufferedImage src, int maxWidth, int maxHeight, 
-                                        ScalingAlgorithm algorithm) {
-        return scaleWithAspectRatio(src, maxWidth, maxHeight, algorithm);
-    }
-
-    /**
-     * Scale to fill bounds (may crop) while maintaining aspect ratio
-     */
-    public static BufferedImage scaleToFill(BufferedImage src, int targetWidth, int targetHeight, 
-                                        ScalingAlgorithm algorithm) {
-        double srcRatio = (double) src.getWidth() / src.getHeight();
-        double targetRatio = (double) targetWidth / targetHeight;
-        
-        int scaleWidth, scaleHeight;
-        
-        if (srcRatio > targetRatio) {
-            // Source is wider, scale by height
-            scaleHeight = targetHeight;
-            scaleWidth = (int) (targetHeight * srcRatio);
-        } else {
-            // Source is taller, scale by width
-            scaleWidth = targetWidth;
-            scaleHeight = (int) (targetWidth / srcRatio);
-        }
-        
-        BufferedImage scaled = scaleImage(src, scaleWidth, scaleHeight, algorithm);
-        
-        // Crop to target size
-        int cropX = (scaleWidth - targetWidth) / 2;
-        int cropY = (scaleHeight - targetHeight) / 2;
-        
-        return scaled.getSubimage(cropX, cropY, targetWidth, targetHeight);
-    }
-
-    /**
-     * Helper method for bilinear interpolation
-     */
-    public static int bilinearInterpolate(int rgb00, int rgb10, int rgb01, int rgb11, 
-                                        double xWeight, double yWeight) {
-        int a00 = (rgb00 >> 24) & 0xFF;
-        int r00 = (rgb00 >> 16) & 0xFF;
-        int g00 = (rgb00 >> 8) & 0xFF;
-        int b00 = rgb00 & 0xFF;
-        
-        int a10 = (rgb10 >> 24) & 0xFF;
-        int r10 = (rgb10 >> 16) & 0xFF;
-        int g10 = (rgb10 >> 8) & 0xFF;
-        int b10 = rgb10 & 0xFF;
-        
-        int a01 = (rgb01 >> 24) & 0xFF;
-        int r01 = (rgb01 >> 16) & 0xFF;
-        int g01 = (rgb01 >> 8) & 0xFF;
-        int b01 = rgb01 & 0xFF;
-        
-        int a11 = (rgb11 >> 24) & 0xFF;
-        int r11 = (rgb11 >> 16) & 0xFF;
-        int g11 = (rgb11 >> 8) & 0xFF;
-        int b11 = rgb11 & 0xFF;
-        
-        int a = (int) (a00 * (1 - xWeight) * (1 - yWeight) +
-                    a10 * xWeight * (1 - yWeight) +
-                    a01 * (1 - xWeight) * yWeight +
-                    a11 * xWeight * yWeight);
-        
-        int r = (int) (r00 * (1 - xWeight) * (1 - yWeight) +
-                    r10 * xWeight * (1 - yWeight) +
-                    r01 * (1 - xWeight) * yWeight +
-                    r11 * xWeight * yWeight);
-        
-        int g = (int) (g00 * (1 - xWeight) * (1 - yWeight) +
-                    g10 * xWeight * (1 - yWeight) +
-                    g01 * (1 - xWeight) * yWeight +
-                    g11 * xWeight * yWeight);
-        
-        int b = (int) (b00 * (1 - xWeight) * (1 - yWeight) +
-                    b10 * xWeight * (1 - yWeight) +
-                    b01 * (1 - xWeight) * yWeight +
-                    b11 * xWeight * yWeight);
-        
-        return (a << 24) | (r << 16) | (g << 8) | b;
-    }
-
     /**
      * Get memory-efficient thumbnail
      */
     public static BufferedImage createThumbnail(BufferedImage src, int maxSize) {
-        return scaleWithAspectRatio(src, maxSize, maxSize, ScalingAlgorithm.AREA_AVERAGING);
+        return ScalingUtils.scaleWithAspectRatio(src, maxSize, maxSize, ScalingAlgorithm.AREA_AVERAGING);
     }
 
-    /**
-     * Optimized scaling for power-of-2 sizes (useful for textures)
-     */
-    public static BufferedImage scaleToPowerOfTwo(BufferedImage src, ScalingAlgorithm algorithm) {
-        int width = src.getWidth();
-        int height = src.getHeight();
-        
-        int newWidth = nextPowerOfTwo(width);
-        int newHeight = nextPowerOfTwo(height);
-        
-        if (newWidth == width && newHeight == height) {
-            return src; // Already power of two
-        }
-        
-        return scaleImage(src, newWidth, newHeight, algorithm);
-    }
-
-    public static int nextPowerOfTwo(int n) {
-        n--;
-        n |= n >> 1;
-        n |= n >> 2;
-        n |= n >> 4;
-        n |= n >> 8;
-        n |= n >> 16;
-        return n + 1;
-    }
-
+   
     public static BufferedImage makeSeamlessTile(BufferedImage src) {
         int width = src.getWidth();
         int height = src.getHeight();
@@ -1848,6 +1449,18 @@ public class ImageHelpers {
    
     public static int clampRGB(int val) {
         return Math.max(0, Math.min(255, val));
+    }
+
+
+    public static int interpolateChannel(int c00, int c10, int c01, int c11,
+        BigDecimal w00, BigDecimal w10, BigDecimal w01, BigDecimal w11
+    ) {
+        BigDecimal result = BigDecimal.valueOf(c00).multiply(w00)
+            .add(BigDecimal.valueOf(c10).multiply(w10))
+            .add(BigDecimal.valueOf(c01).multiply(w01))
+            .add(BigDecimal.valueOf(c11).multiply(w11));
+        
+        return result.setScale(0, RoundingMode.HALF_EVEN).intValue();
     }
 
     

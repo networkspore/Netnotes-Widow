@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display;
+package io.netnotes.gui.fx.display.scaling;
 
 import java.awt.image.BufferedImage;
 import java.math.BigDecimal;
@@ -14,8 +14,8 @@ public class MitchellScaling {
     // Standard Mitchell values: , C = 1/3 (balanced)
     // B = 1, C = 0 gives cubic B-spline (blurrier)
     // B = 0, C = 0.5 gives Catmull-Rom (sharper)
-    private static final BigDecimal B_SPLINE = new BigDecimal("0.3333333333333333333333333333333333333");
-    private static final BigDecimal C_SPLINE = B_SPLINE;
+    private static final BigDecimal B_SPLINE = MathHelpers.ONE_THIRD;
+    private static final BigDecimal C_SPLINE = MathHelpers.ONE_THIRD;
     
     // Support radius for Mitchell-Netravali is 2
     private static final BigDecimal MITCHELL_SUPPORT = BigDecimal.TWO;
@@ -23,10 +23,6 @@ public class MitchellScaling {
     // MathContext for BigDecimal calculations
     private static final MathContext MC = new MathContext(34, RoundingMode.HALF_EVEN);
     
-    // Pre-calculated constants for efficiency
-    private static final BigDecimal ONE_SIXTH = new BigDecimal("0.1666666666666666666666666666666666667");
-    private static final BigDecimal EIGHT = new BigDecimal("8");
-    private static final BigDecimal TWELVE = new BigDecimal("12");
     
     /**
      * Scale an image using Mitchell-Netravali resampling for balanced quality.
@@ -411,35 +407,35 @@ public class MitchellScaling {
             // For |x| < 1:
             // (1/6) * ((12 - 9B - 6C)x³ + (-18 + 12B + 6C)x² + (6 - 2B))
             
-            BigDecimal coef3 = TWELVE.subtract(bSpline.multiply(new BigDecimal("9"), mc))
+            BigDecimal coef3 = MathHelpers.TWELVE.subtract(bSpline.multiply(new BigDecimal("9"), mc))
                                      .subtract(bSpline.multiply(new BigDecimal("6"), mc));
-            BigDecimal coef2 = new BigDecimal("-18").add(bSpline.multiply(TWELVE, mc))
+            BigDecimal coef2 = new BigDecimal("-18").add(bSpline.multiply(MathHelpers.TWELVE, mc))
                                                      .add(cSpline.multiply(new BigDecimal("6"), mc));
             BigDecimal coef0 = new BigDecimal("6").subtract(bSpline.multiply(BigDecimal.TWO, mc));
             
             BigDecimal result = coef3.multiply(x3, mc)
                                      .add(coef2.multiply(x2, mc))
                                      .add(coef0)
-                                     .multiply(ONE_SIXTH, mc);
+                                     .multiply(MathHelpers.ONE_SIXTH, mc);
             
             return result.stripTrailingZeros();
         } else {
             // For 1 ≤ |x| < 2:
             // (1/6) * ((-b - 6C)x³ + (6B + 30C)x² + (-12B - 48C)x + (8B + 24C))
             
-            BigDecimal coef3 = bSpline.negate().subtract(cSpline.multiply(new BigDecimal("6"), mc));
-            BigDecimal coef2 = bSpline.multiply(new BigDecimal("6"), mc)
-                                .add(cSpline.multiply(new BigDecimal("30"), mc));
-            BigDecimal coef1 = bSpline.multiply(TWELVE, mc).negate()
-                                .subtract(cSpline.multiply(new BigDecimal("48"), mc));
-            BigDecimal coef0 = bSpline.multiply(EIGHT, mc)
-                                .add(cSpline.multiply(new BigDecimal("24"), mc));
+            BigDecimal coef3 = bSpline.negate().subtract(cSpline.multiply(MathHelpers.SIX, mc));
+            BigDecimal coef2 = bSpline.multiply(MathHelpers.SIX, mc)
+                                .add(cSpline.multiply(MathHelpers.THIRTY, mc));
+            BigDecimal coef1 = bSpline.multiply(MathHelpers.TWELVE, mc).negate()
+                                .subtract(cSpline.multiply(MathHelpers.FOURTY_EIGHT, mc));
+            BigDecimal coef0 = bSpline.multiply(MathHelpers.EIGHT, mc)
+                                .add(cSpline.multiply(MathHelpers.TWENTY_FOUR, mc));
             
             BigDecimal result = coef3.multiply(x3, mc)
                                      .add(coef2.multiply(x2, mc))
                                      .add(coef1.multiply(absX, mc))
                                      .add(coef0)
-                                     .multiply(ONE_SIXTH, mc);
+                                     .multiply(MathHelpers.ONE_SIXTH, mc);
             
             return result.stripTrailingZeros();
         }
