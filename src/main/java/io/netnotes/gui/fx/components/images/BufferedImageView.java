@@ -1,6 +1,5 @@
 package io.netnotes.gui.fx.components.images;
 
-
 import javafx.embed.swing.SwingFXUtils;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -8,20 +7,24 @@ import javafx.scene.image.ImageView;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.gui.fx.components.images.effects.BrightnessEffect;
 import io.netnotes.gui.fx.components.images.effects.ImageEffects;
 import io.netnotes.gui.fx.components.images.effects.InvertEffect;
+import io.netnotes.gui.fx.utils.TaskUtils;
 
 public class BufferedImageView extends ImageView {
     private Image m_defaultImg = null;
-    private BufferedImage m_img;
     private ArrayList<ImageEffects> m_effects = new ArrayList<ImageEffects>();
+    private final AtomicReference<CompletableFuture<Void>> m_currentTask = new AtomicReference<>(CompletableFuture.completedFuture(null));
+
+
 
     public BufferedImageView() {
         super();
-        m_img = null;
         setPreserveRatio(true);
     } 
     
@@ -59,27 +62,12 @@ public class BufferedImageView extends ImageView {
     }
 
     public void setDefaultImage(Image image) {
-        if(image != null){
-            m_defaultImg = image;
-
-            m_img = new BufferedImage((int) image.getWidth(),(int) image.getHeight(),  BufferedImage.TYPE_INT_ARGB);
-            m_img = SwingFXUtils.fromFXImage(image, m_img);
-            
-            updateImage();
-            setImage(SwingFXUtils.toFXImage(m_img, null));
-        }else{
-            m_img = null;
-            m_defaultImg = null;
-            setImage(null);
-        }
-       // setImage(m_img);
-        
+        m_defaultImg = image;
+        updateImage();
     }
 
     public void setDefaultImage(Image img, double fitWidth) {
         setDefaultImage(img);
-     
-    
         setFitWidth(fitWidth);
         setPreserveRatio(true);
     }
@@ -88,7 +76,6 @@ public class BufferedImageView extends ImageView {
         if (id != null && m_effects.size() > 0) {
             for (int i = 0; i < m_effects.size(); i++) {
                 ImageEffects effect = m_effects.get(i);
-
                 if (effect.getId().equals(id)) {
                     return effect;
                 }
@@ -101,7 +88,6 @@ public class BufferedImageView extends ImageView {
         if (m_effects.size() == 0) {
             return null;
         }
-
         for (int i = 0; i < m_effects.size(); i++) {
             ImageEffects effect = m_effects.get(i);
             if (effect.getName().equals(name)) {
@@ -109,15 +95,12 @@ public class BufferedImageView extends ImageView {
             }
 
         }
-
         return null;
     }
 
     public void applyInvertEffect(double amount) {
-
         m_effects.add(new InvertEffect(amount));
         updateImage();
-
     }
 
     public void applyInvertEffect(NoteBytes id, double amount) {
@@ -167,46 +150,37 @@ public class BufferedImageView extends ImageView {
         updateImage();
     }
 
+
+    
+
     public void updateImage() {
+        if (m_defaultImg == null) {
+            super.setImage(null);
+        }else if (!m_effects.isEmpty()) {
+            // Capture current state
+            final Image sourceImage = m_defaultImg;
+            final ArrayList<ImageEffects> effectsSnapshot = new ArrayList<>(m_effects);
 
-        if (m_img != null && m_defaultImg != null) {
-        
-         
-            m_img = SwingFXUtils.fromFXImage(m_defaultImg, m_img);
-           
-            if (!m_effects.isEmpty()) {
-           
-
-                for (int i = 0; i < m_effects.size(); i++) {
-                    ImageEffects effect = m_effects.get(i);
-                    effect.applyEffect(m_img);
-                }
-
-            }
-        } 
-        setImage(SwingFXUtils.toFXImage(m_img, null));
-    }
-
-    public BufferedImage getBaseImage() {
-        return m_img;
-    }
-
-    public void setBufferedImage(BufferedImage imgBuf) {
-        m_img = imgBuf;
-        if (m_img != null) {
-            if (m_effects.size() > 0) {
-
-                for (int i = 0; i < m_effects.size(); i++) {
-                    ImageEffects effect = m_effects.get(i);
-                    effect.applyEffect(imgBuf);
-                }
-
-
-            }
-
-            setImage(SwingFXUtils.toFXImage(imgBuf, null));
-        } else {
-            setImage(null);
+            // Chain this task after the previous one
+            m_currentTask.updateAndGet(previousTask -> 
+                previousTask.thenRunAsync(() -> {
+                    try {
+                        // Process in background (virtual thread)
+                        BufferedImage workingImage = SwingFXUtils.fromFXImage(sourceImage, null);
+                        for (ImageEffects effect : effectsSnapshot) {
+                            effect.applyEffect(workingImage);
+                        }
+                        Image resultImage = SwingFXUtils.toFXImage(workingImage, null);
+                        TaskUtils.fxDelay(30, (onSucceeded)->super.setImage(resultImage));
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }, TaskUtils.getVirtualExecutor())
+            );
+        }else{
+            super.setImage(m_defaultImg);
         }
     }
+   
+    
 }

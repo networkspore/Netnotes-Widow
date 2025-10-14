@@ -2,6 +2,7 @@ package io.netnotes.gui.fx.utils;
 
 import java.io.Serializable;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import io.netnotes.engine.messaging.NoteMessaging;
@@ -10,8 +11,10 @@ import javafx.concurrent.WorkerStateEvent;
 import javafx.event.EventHandler;
 
 public class TaskUtils {
+    private static ExecutorService virtualExecutor = null;
     
-    public static Future<?> returnException(String errorString, ExecutorService execService, EventHandler<WorkerStateEvent> onFailed) {
+
+    public static Future<?> returnException(String errorString, EventHandler<WorkerStateEvent> onFailed) {
 
         Task<Object> task = new Task<Object>() {
             @Override
@@ -22,12 +25,12 @@ public class TaskUtils {
 
         task.setOnFailed(onFailed);
 
-        return execService.submit(task);
+        return getVirtualExecutor().submit(task);
 
     }
 
-    public static Future<?> returnException(WorkerStateEvent stateEvent, ExecutorService execService, EventHandler<WorkerStateEvent> onFailed){
-        return returnException(stateEvent.getSource().getException(), execService, onFailed);
+    public static Future<?> returnException(WorkerStateEvent stateEvent, EventHandler<WorkerStateEvent> onFailed){
+        return returnException(stateEvent.getSource().getException(), onFailed);
     }
 
      public static Exception getCreateException( WorkerStateEvent event){
@@ -42,9 +45,9 @@ public class TaskUtils {
         }
     }
 
-    public static Future<?> returnException(ExecutorService execService, EventHandler<WorkerStateEvent> onFailed, WorkerStateEvent... stateEvents) {
+    public static Future<?> returnException(EventHandler<WorkerStateEvent> onFailed, WorkerStateEvent... stateEvents) {
         Exception combinedException = createCombinedException(stateEvents);
-        return returnException(combinedException, execService, onFailed);
+        return returnException(combinedException, onFailed);
     }
 
    
@@ -67,15 +70,16 @@ public class TaskUtils {
         return rootException;
     }
 
-    public static Future<?> returnException(Throwable throwable, ExecutorService execService, EventHandler<WorkerStateEvent> onFailed){
+    public static Future<?> returnException(Throwable throwable,EventHandler<WorkerStateEvent> onFailed){
         if(throwable != null && throwable instanceof Exception){
-            return returnException((Exception) throwable, execService, onFailed);
+            return returnException((Exception) throwable, onFailed);
         }else{
-            return returnException(throwable != null ? throwable.getMessage() : NoteMessaging.Error.UNKNOWN, execService, onFailed);
+            return returnException(throwable != null ? throwable.getMessage() : NoteMessaging.Error.UNKNOWN, onFailed);
         }
     }
 
-    public static Future<?> returnException(Exception exception, ExecutorService execService, EventHandler<WorkerStateEvent> onFailed) {
+
+    public static Future<?> returnException(Exception exception, EventHandler<WorkerStateEvent> onFailed) {
 
         Task<Object> task = new Task<Object>() {
             @Override
@@ -86,7 +90,7 @@ public class TaskUtils {
 
         task.setOnFailed(onFailed);
 
-        return execService.submit(task);
+        return getVirtualExecutor().submit(task);
 
     }
     public static Object getSerializableSourceValue( WorkerStateEvent event){
@@ -96,25 +100,7 @@ public class TaskUtils {
     }
 
 
-    public static Future<?> returnObject(Object object, ExecutorService execService, EventHandler<WorkerStateEvent> onSucceeded, EventHandler<WorkerStateEvent> onFailed) {
 
-        Task<Object> task = new Task<Object>() {
-            @Override
-            public Object call() {
-
-                return object;
-            }
-        };
-
-        task.setOnFailed(onFailed);
-
-        task.setOnSucceeded(onSucceeded);
-
-        return execService.submit(task);
-
-    }
-
-    
     public static String getErrorMsg(WorkerStateEvent failedEvent){
         return getErrorMsg(failedEvent.getSource().getException());
     }
@@ -124,24 +110,27 @@ public class TaskUtils {
     }
     
 
-    public static Future<?> delayObject(Object object, long delayMillis, ExecutorService execService, EventHandler<WorkerStateEvent> onSucceeded) {
+    public static ExecutorService getVirtualExecutor(){
+        if(virtualExecutor == null){
+            virtualExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        }
+        return virtualExecutor;
+    }
 
+    public static Future<?> fxDelay(long delayMillis,EventHandler<WorkerStateEvent> onSucceeded) {
         Task<Object> task = new Task<Object>() {
             @Override
             public Object call() throws InterruptedException {
                 Thread.sleep(delayMillis);
-                return object;
+                return null;
             }
         };
-
         task.setOnSucceeded(onSucceeded);
-
-        return execService.submit(task);
-
+        return getVirtualExecutor().submit(task);
     }
 
 
-    public static Future<?> returnObject(Object object, ExecutorService execService, EventHandler<WorkerStateEvent> onSucceeded) {
+    public static Future<?> returnObject(Object object, EventHandler<WorkerStateEvent> onSucceeded) {
 
         Task<Object> task = new Task<Object>() {
             @Override
@@ -150,11 +139,8 @@ public class TaskUtils {
                 return object;
             }
         };
-
         task.setOnSucceeded(onSucceeded);
-
-        return execService.submit(task);
-
+        return getVirtualExecutor().submit(task);
     }
 
 }
