@@ -11,6 +11,7 @@ import io.netnotes.engine.utils.LoggingHelpers;
 import io.netnotes.gui.fx.display.javafxsvg.SvgImageLoaderFactory;
 
 import io.netnotes.engine.utils.Version;
+import io.netnotes.engine.utils.github.GitHubInfo;
 import io.netnotes.engine.utils.PomProperties;
 
 import javafx.scene.image.Image;
@@ -42,8 +43,7 @@ public class FxResourceFactory {
 
     public final static String APP_NAME =  "Netnotes";
 
-    public static final String GITHUB_USER = "networkspore";
-    public static final String GITHUB_PROJECT = "Netnotes-Widow";
+    public static final GitHubInfo GITHUB_APP_INFO = new GitHubInfo("networkspore", "Netnotes-Widow");
 
     public static final String POM_GROUP_ID = "io.netnotes";
     public static final String POM_ARTIFACT_ID = "loader";
