@@ -12,7 +12,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
-import io.netnotes.gui.fx.components.vboxes.AppBox;
+import io.netnotes.gui.fx.app.apps.AppBox;
 
 import java.util.ArrayList;
 

@@ -1,11 +1,11 @@
-package io.netnotes.gui.fx.components.vboxes;
+package io.netnotes.gui.fx.app.apps;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesReadOnly;
 import javafx.beans.property.DoubleProperty;
-import javafx.scene.layout.VBox;
+import javafx.scene.layout.BorderPane;
 
-public class AppBox extends VBox{
+public class AppBox extends BorderPane{
     
     protected final DoubleProperty contentWidth;
     protected final DoubleProperty contentHeight;
