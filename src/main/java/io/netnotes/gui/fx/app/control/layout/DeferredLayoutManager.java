@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.app.control;
+package io.netnotes.gui.fx.app.control.layout;
 
 
 import java.util.ArrayList;
@@ -13,6 +13,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Future;
 
+import io.netnotes.gui.fx.app.control.FrameRateMonitor;
 import io.netnotes.gui.fx.utils.TaskUtils;
 import javafx.scene.Node;
 import javafx.stage.Stage;
@@ -28,8 +29,11 @@ public class DeferredLayoutManager {
     private final Set<LayoutNode> dirtyNodes = new LinkedHashSet<>();
     private final Set<StageNode> dirtyStages = new LinkedHashSet<>();
     
+
+    public final static long DEFAULT_LAYOUT_DELAY = 16; //~60fps
+
     private Future<?> scheduledLayout = null;
-    private long layoutDelay = 30;
+    private long layoutDelay = DEFAULT_LAYOUT_DELAY;
     private long lastLayoutTime = 0;
     private int rapidEventCount = 0;
     private final Object scheduleLock = new Object();
@@ -139,8 +143,23 @@ public class DeferredLayoutManager {
             long now = System.currentTimeMillis();
             long timeSinceLastLayout = now - lastLayoutTime;
             
-            // Adaptive delay based on event frequency and frame rate
+            // Track rapid event bursts for additional adaptive behavior
+            if (timeSinceLastLayout < 100) {
+                rapidEventCount++;
+            } else {
+                rapidEventCount = 0;
+            }
+            
+            // Cancel any pending layout
+            if (scheduledLayout != null && !scheduledLayout.isDone()) {
+                scheduledLayout.cancel(false);
+            }
+            
+            // Schedule new layout - delay is automatically adaptive via TaskUtils
             if (useAdaptiveDelay) {
+                scheduledLayout = TaskUtils.fxDelay(event -> performLayout());
+            } else {
+            
                 if (timeSinceLastLayout < 100) {
                     rapidEventCount++;
                     if (rapidEventCount > 5) {
@@ -149,19 +168,11 @@ public class DeferredLayoutManager {
                     }
                 } else {
                     rapidEventCount = 0;
-                    layoutDelay = 16; // ~60fps when not under pressure
+                    layoutDelay = DEFAULT_LAYOUT_DELAY; // default when not under pressure
                 }
+                
+                scheduledLayout = TaskUtils.fxDelay(layoutDelay, event -> performLayout());
             }
-            
-            // Cancel any pending layout
-            if (scheduledLayout != null && !scheduledLayout.isDone()) {
-                scheduledLayout.cancel(false);
-            }
-            
-            // Schedule new layout with debounce delay
-            scheduledLayout = TaskUtils.fxDelay(layoutDelay, event -> {
-                performLayout();
-            });
         }
     }
     

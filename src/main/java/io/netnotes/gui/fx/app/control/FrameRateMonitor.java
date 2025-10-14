@@ -3,7 +3,7 @@ package io.netnotes.gui.fx.app.control;
 /**
  * Global frame rate monitor for coordinating timing across all real-time components
  */
-class FrameRateMonitor {
+public class FrameRateMonitor {
     private static final FrameRateMonitor INSTANCE = new FrameRateMonitor();
     
     private static final int SAMPLE_SIZE = 30;

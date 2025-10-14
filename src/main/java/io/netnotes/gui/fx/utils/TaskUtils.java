@@ -6,12 +6,33 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import io.netnotes.engine.messaging.NoteMessaging;
+import io.netnotes.gui.fx.app.control.FrameRateMonitor;
 import javafx.concurrent.Task;
 import javafx.concurrent.WorkerStateEvent;
 import javafx.event.EventHandler;
 
 public class TaskUtils {
     private static ExecutorService virtualExecutor = null;
+    private static boolean useAdaptiveDelay = true;
+
+    /**
+     * Enable or disable adaptive delay globally
+     */
+    public static void setAdaptiveDelay(boolean adaptive) {
+        useAdaptiveDelay = adaptive;
+    }
+    
+     /**
+     * Schedule a delayed task with adaptive delay based on current frame rate.
+     * Automatically uses FrameRateMonitor to determine optimal delay.
+     */
+    public static Future<?> fxDelay(EventHandler<WorkerStateEvent> onSucceeded) {
+        long delay = useAdaptiveDelay 
+            ? FrameRateMonitor.getInstance().getRecommendedDebounceDelay()
+            : 16; // Default to ~60fps
+        return fxDelay(delay, onSucceeded);
+    }
+    
     
 
     public static Future<?> returnException(String errorString, EventHandler<WorkerStateEvent> onFailed) {
@@ -129,6 +150,7 @@ public class TaskUtils {
         return getVirtualExecutor().submit(task);
     }
 
+  
 
     public static Future<?> returnObject(Object object, EventHandler<WorkerStateEvent> onSucceeded) {
 

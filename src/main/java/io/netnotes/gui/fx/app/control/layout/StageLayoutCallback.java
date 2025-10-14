@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.app.control;
+package io.netnotes.gui.fx.app.control.layout;
 
 /**
  * Callback interface for stage positioning
