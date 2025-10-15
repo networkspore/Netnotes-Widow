@@ -30,10 +30,8 @@ public class DeferredLayoutManager {
     private final Set<StageNode> dirtyStages = new LinkedHashSet<>();
     
 
-    public final static long DEFAULT_LAYOUT_DELAY = 16; //~60fps
-
     private Future<?> scheduledLayout = null;
-    private long layoutDelay = DEFAULT_LAYOUT_DELAY;
+    private long layoutDelay = TaskUtils.DEFAULT_FX_DELAY;
     private long lastLayoutTime = 0;
     private int rapidEventCount = 0;
     private final Object scheduleLock = new Object();
@@ -168,7 +166,7 @@ public class DeferredLayoutManager {
                     }
                 } else {
                     rapidEventCount = 0;
-                    layoutDelay = DEFAULT_LAYOUT_DELAY; // default when not under pressure
+                    layoutDelay = TaskUtils.DEFAULT_FX_DELAY; // default when not under pressure
                 }
                 
                 scheduledLayout = TaskUtils.fxDelay(layoutDelay, event -> performLayout());

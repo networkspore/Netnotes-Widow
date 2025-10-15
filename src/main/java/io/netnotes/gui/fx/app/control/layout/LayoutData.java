@@ -5,7 +5,7 @@ import javafx.scene.Node;
 /**
  * Data returned from layout calculation
  */
-class LayoutData {
+public class LayoutData {
     private final double x, y, width, height;
     private final boolean setX, setY, setWidth, setHeight;
     

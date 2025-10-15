@@ -13,6 +13,8 @@ import javafx.scene.image.ImageView;
 import javafx.geometry.Pos;
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.utils.github.GitHubInfo;
+import io.netnotes.gui.fx.components.stages.tabManager.AppBox;
+import io.netnotes.gui.fx.utils.TaskUtils;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -35,7 +37,7 @@ public class AppManager extends AppBox {
     
     public AppManager(DoubleProperty contentWidth, DoubleProperty contentHeight, 
                      GitHubInfo gitHubInfo, ExecutorService execService) {
-        super(ID, NAME, contentWidth, contentHeight);
+        super(ID, NAME);
         m_gitHubInfo = gitHubInfo;
         m_execService = execService;
         m_appsLoader = new AvailableAppsLoader(gitHubInfo, execService);
@@ -93,10 +95,10 @@ public class AppManager extends AppBox {
         m_statusLabel.setText("Loading available apps...");
         m_appsListBox.getChildren().clear();
         m_refreshButton.setDisable(true);
-        
+  
         m_appsLoader.loadAvailableApps()
             .thenAccept(apps -> {
-                javafx.application.Platform.runLater(() -> {
+                TaskUtils.defaultFxDelay((e) -> {
                     m_availableApps = apps;
                     displayApps(apps);
                     m_statusLabel.setText("Found " + apps.size() + " available applications");
@@ -104,7 +106,7 @@ public class AppManager extends AppBox {
                 });
             })
             .exceptionally(error -> {
-                javafx.application.Platform.runLater(() -> {
+                TaskUtils.defaultFxDelay((e) -> {
                     m_statusLabel.setText("Error loading apps: " + error.getMessage());
                     m_statusLabel.setStyle("-fx-text-fill: #ff6666; -fx-font-size: 12px;");
                     m_refreshButton.setDisable(false);

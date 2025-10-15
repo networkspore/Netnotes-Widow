@@ -4,6 +4,6 @@ package io.netnotes.gui.fx.app.control.layout;
  * Callback interface for node layout calculation
  */
 @FunctionalInterface
-interface LayoutCallback {
+public interface LayoutCallback {
     LayoutData calculate(LayoutContext context);
 }

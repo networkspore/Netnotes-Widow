@@ -1,20 +1,18 @@
 package io.netnotes.gui.fx.components.stages.tabManager;
+
 import javafx.scene.Scene;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 import javafx.scene.image.Image;
 import javafx.scene.control.Button;
-import javafx.beans.property.DoubleProperty;
-import javafx.beans.property.SimpleDoubleProperty;
-import javafx.beans.property.SimpleObjectProperty;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.ArrayList;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
-import io.netnotes.gui.fx.app.apps.AppBox;
-
-import java.util.ArrayList;
+import io.netnotes.gui.fx.app.control.layout.DeferredLayoutManager;
+import io.netnotes.gui.fx.app.control.layout.LayoutData;
 
 public class TabManagerStage {
     private final Stage stage;
@@ -24,19 +22,16 @@ public class TabManagerStage {
     private final StackPane contentArea;
     
     private final HashMap<NoteBytes, ContentTab> tabs;
-    private final SimpleObjectProperty<NoteBytes> currentTabId;
+    private NoteBytes currentTabId;
     
-    private final DoubleProperty contentWidth;
-    private final DoubleProperty contentHeight;
+    // Track current content dimensions
+    private double contentWidth = 800;
+    private double contentHeight = 600;
     
     public TabManagerStage(Stage stage, String title, Image smallIcon15, Image windowIcon100) {
         this.stage = stage;
         this.tabs = new HashMap<>();
-        this.currentTabId = new SimpleObjectProperty<>(null);
-        
-        // Initialize shared size properties
-        this.contentWidth = new SimpleDoubleProperty(800);
-        this.contentHeight = new SimpleDoubleProperty(600);
+        this.currentTabId = null;
         
         // Setup stage
         stage.setTitle(title);
@@ -53,15 +48,14 @@ public class TabManagerStage {
         topBar = new TabTopBar(smallIcon15, title, closeBtn, stage);
         topBar.setTabSelectionListener(tabId -> {
             if (tabId == null) {
-                // Close all tabs
                 closeAllTabs();
             } else {
-                currentTabId.set(tabId);
+                setCurrentTab(tabId);
             }
         });
         
         // Create sidebar
-        sideBar = new SideBarPanel(contentWidth, contentHeight);
+        sideBar = new SideBarPanel();
         
         // Create content area
         contentArea = new StackPane();
@@ -75,43 +69,106 @@ public class TabManagerStage {
         
         // Create scene
         Scene scene = new Scene(root, 1000, 650);
+        stage.setScene(scene);
         
-        // Bind content dimensions
-        contentWidth.bind(scene.widthProperty().subtract(sideBar.widthProperty()));
-        contentHeight.bind(scene.heightProperty().subtract(topBar.heightProperty()));
+        // Register with DeferredLayoutManager
+        setupLayoutManagement();
+    }
+    
+    private void setupLayoutManagement() {
+        // Register the sidebar for layout
+        DeferredLayoutManager.register(stage, sideBar, ctx -> {
+            Scene scene = stage.getScene();
+            if (scene == null) return new LayoutData.Builder().build();
+            
+            double sceneHeight = scene.getHeight();
+            double topBarHeight = topBar.getHeight();
+            
+            return new LayoutData.Builder()
+                .height(sceneHeight - topBarHeight)
+                .build();
+        });
         
-        // Listen for tab changes
-        currentTabId.addListener((obs, oldVal, newVal) -> {
-            contentArea.getChildren().clear();
-            if (newVal != null) {
-                ContentTab tab = tabs.get(newVal);
-                if (tab != null) {
-                    contentArea.getChildren().add(tab.getPane());
-                    topBar.setActiveTab(newVal);
-                } else {
-                    currentTabId.set(null);
+        // Register the content area for layout
+        DeferredLayoutManager.register(stage, contentArea, ctx -> {
+            Scene scene = stage.getScene();
+            if (scene == null) return new LayoutData.Builder().build();
+            
+            double sceneWidth = scene.getWidth();
+            double sceneHeight = scene.getHeight();
+            double sideBarWidth = sideBar.getWidth();
+            double topBarHeight = topBar.getHeight();
+            
+            // Update tracked dimensions
+            contentWidth = sceneWidth - sideBarWidth;
+            contentHeight = sceneHeight - topBarHeight;
+            
+            return new LayoutData.Builder()
+                .width(contentWidth)
+                .height(contentHeight)
+                .build();
+        });
+        
+        // Listen for scene size changes
+        stage.getScene().widthProperty().addListener((obs, old, newVal) -> {
+            DeferredLayoutManager.markDirty(sideBar);
+            DeferredLayoutManager.markDirty(contentArea);
+            // Trigger layout for all active tabs
+            if (currentTabId != null) {
+                ContentTab tab = tabs.get(currentTabId);
+                if (tab != null && tab.getPane() instanceof AppBox) {
+                    DeferredLayoutManager.markDirty(tab.getPane());
                 }
             }
         });
         
-        stage.setScene(scene);
+        stage.getScene().heightProperty().addListener((obs, old, newVal) -> {
+            DeferredLayoutManager.markDirty(sideBar);
+            DeferredLayoutManager.markDirty(contentArea);
+            // Trigger layout for all active tabs
+            if (currentTabId != null) {
+                ContentTab tab = tabs.get(currentTabId);
+                if (tab != null && tab.getPane() instanceof AppBox) {
+                    DeferredLayoutManager.markDirty(tab.getPane());
+                }
+            }
+        });
+        
+        // Listen for sidebar expand/collapse
+        sideBar.getExpandButton().setOnAction(e -> {
+            sideBar.toggleExpanded();
+            DeferredLayoutManager.markDirty(contentArea);
+            // Trigger layout for all active tabs
+            if (currentTabId != null) {
+                ContentTab tab = tabs.get(currentTabId);
+                if (tab != null && tab.getPane() instanceof AppBox) {
+                    DeferredLayoutManager.markDirty(tab.getPane());
+                }
+            }
+        });
     }
-    
-
     
     public void addTab(NoteBytes id, String title, AppBox appBox) {
         if (tabs.containsKey(id)) {
             // Tab already exists, just switch to it
-            currentTabId.set(id);
+            setCurrentTab(id);
             return;
         }
         
         ContentTab tab = new ContentTab(id, appBox.getAppId(), title, appBox);
         tabs.put(id, tab);
         
-        // Bind app size
-        appBox.prefWidthProperty().bind(contentWidth);
-        appBox.prefHeightProperty().bind(contentHeight);
+        // Register AppBox with layout manager
+        DeferredLayoutManager.register(stage, appBox, ctx -> {
+            // Only layout if this is the active tab
+            if (currentTabId != null && currentTabId.equals(id)) {
+                return new LayoutData.Builder()
+                    .width(contentWidth)
+                    .height(contentHeight)
+                    .build();
+            }
+            return new LayoutData.Builder().build();
+        });
         
         // Setup close handler
         tab.onCloseBtn(e -> removeTab(id));
@@ -120,30 +177,28 @@ public class TabManagerStage {
         topBar.addTab(tab);
         
         // Set as current tab
-        currentTabId.set(id);
+        setCurrentTab(id);
     }
     
     public void removeTab(NoteBytes id) {
-        boolean isCurrentTab = currentTabId.get() != null && currentTabId.get().equals(id);
+        boolean isCurrentTab = currentTabId != null && currentTabId.equals(id);
         
         if (isCurrentTab) {
-            currentTabId.set(null);
+            contentArea.getChildren().clear();
+            currentTabId = null;
         }
         
         ContentTab tab = tabs.remove(id);
         if (tab != null) {
             AppBox appBox = (AppBox) tab.getPane();
-            appBox.prefWidthProperty().unbind();
-            appBox.prefHeightProperty().unbind();
             appBox.shutdown();
-            
             topBar.removeTab(id);
         }
         
         // If this was the current tab, switch to another
         if (isCurrentTab && !tabs.isEmpty()) {
             for (NoteBytes tabId : tabs.keySet()) {
-                currentTabId.set(tabId);
+                setCurrentTab(tabId);
                 break;
             }
         }
@@ -180,13 +235,25 @@ public class TabManagerStage {
     }
     
     public void setCurrentTab(NoteBytes id) {
-        if (tabs.containsKey(id)) {
-            currentTabId.set(id);
+        if (!tabs.containsKey(id)) {
+            return;
+        }
+        
+        currentTabId = id;
+        contentArea.getChildren().clear();
+        
+        ContentTab tab = tabs.get(id);
+        if (tab != null) {
+            contentArea.getChildren().add(tab.getPane());
+            topBar.setActiveTab(id);
+            
+            // Trigger layout for the new active tab
+            DeferredLayoutManager.markDirty(tab.getPane());
         }
     }
     
     public NoteBytes getCurrentTabId() {
-        return currentTabId.get();
+        return currentTabId;
     }
     
     public SideBarPanel getSideBar() {
@@ -205,11 +272,11 @@ public class TabManagerStage {
         return stage;
     }
     
-    public DoubleProperty contentWidthProperty() {
+    public double getContentWidth() {
         return contentWidth;
     }
     
-    public DoubleProperty contentHeightProperty() {
+    public double getContentHeight() {
         return contentHeight;
     }
 }

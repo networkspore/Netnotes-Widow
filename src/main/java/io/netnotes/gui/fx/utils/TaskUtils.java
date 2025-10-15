@@ -15,6 +15,7 @@ public class TaskUtils {
     private static ExecutorService virtualExecutor = null;
     private static boolean useAdaptiveDelay = true;
 
+    public final static long DEFAULT_FX_DELAY = 16; //~60fps
     /**
      * Enable or disable adaptive delay globally
      */
@@ -32,8 +33,37 @@ public class TaskUtils {
             : 16; // Default to ~60fps
         return fxDelay(delay, onSucceeded);
     }
+
+
+    public static Future<?> defaultFxDelay(EventHandler<WorkerStateEvent> onSucceeded) {
+        return fxDelay(DEFAULT_FX_DELAY, onSucceeded);
+    }
     
+
+    public static Future<?> noDelay(EventHandler<WorkerStateEvent> onSucceeded) {
+        Task<Object> task = new Task<Object>() {
+            @Override
+            public Object call() {
+                return null;
+            }
+        };
+        task.setOnSucceeded(onSucceeded);
+        return getVirtualExecutor().submit(task);
+    }
     
+     public static Runnable safeRunnable(Runnable runnable) {
+        return () -> {
+            if (runnable != null) {
+                try {
+                    runnable.run();
+                } catch (Exception e) {
+                    System.err.println("Error in safe runnable: " + e.getMessage());
+                    e.printStackTrace();
+                }
+            }
+        };
+    }
+        
 
     public static Future<?> returnException(String errorString, EventHandler<WorkerStateEvent> onFailed) {
 
@@ -164,5 +194,9 @@ public class TaskUtils {
         task.setOnSucceeded(onSucceeded);
         return getVirtualExecutor().submit(task);
     }
+
+
+
+
 
 }

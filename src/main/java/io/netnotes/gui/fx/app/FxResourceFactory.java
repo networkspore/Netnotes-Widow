@@ -135,6 +135,9 @@ public class FxResourceFactory {
     public static final String UNAVAILBLE_ICON = ASSETS_DIRECTORY + "/unavailable.png";
     public static final String NETWORK_ICON = ASSETS_DIRECTORY + "/globe-outline-white-30.png";
     public static final String NETWORK_ICON256 = ASSETS_DIRECTORY + "/globe-outline-white-120.png";
+    public static final String TOGGLE_FRAME = ASSETS_DIRECTORY + "/expandFrame.png";
+
+
 
     public final static double STAGE_WIDTH = 450;
     public final static double STAGE_HEIGHT = 250;
@@ -143,6 +146,7 @@ public class FxResourceFactory {
     public final static double DEFAULT_STAGE_WIDTH = 700;
     public final static double DEFAULT_STAGE_HEIGHT = 500;
 
+    public final static double BTN_IMG_SIZE = 30;
     public final static double MENU_BAR_IMAGE_WIDTH = 18;
     public final static int VIEWPORT_HEIGHT_OFFSET = 5;
     public final static int VIEWPORT_WIDTH_OFFSET = 5;

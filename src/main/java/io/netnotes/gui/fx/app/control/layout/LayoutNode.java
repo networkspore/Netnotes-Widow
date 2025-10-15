@@ -9,7 +9,7 @@ import javafx.stage.Stage;
 /**
  * Represents a node in the layout hierarchy
  */
-class LayoutNode {
+public class LayoutNode {
     private final Node node;
     private final Stage stage;
     private final LayoutCallback callback;

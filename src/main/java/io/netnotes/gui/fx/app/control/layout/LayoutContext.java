@@ -6,7 +6,7 @@ import javafx.stage.Stage;
 /**
  * Context provided to layout callbacks
  */
-class LayoutContext {
+public class LayoutContext {
     private final Node node;
     private final Stage stage;
     
