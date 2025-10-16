@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.scaling;
+package io.netnotes.gui.fx.components.images.scaling;
 
 import java.awt.Dimension;
 import java.awt.image.BufferedImage;

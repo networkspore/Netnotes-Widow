@@ -1,33 +1,38 @@
 package io.netnotes.gui.fx.components.stages.tabManager;
 
-import javafx.scene.layout.Pane;
 import javafx.scene.layout.HBox;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuItem;
 import javafx.scene.control.Button;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
-import javafx.beans.property.SimpleStringProperty;
+
+
+
 import io.netnotes.engine.noteBytes.NoteBytes;
-import javafx.beans.property.ReadOnlyStringProperty;
+import io.netnotes.engine.noteBytes.NoteBytesArray;
+import javafx.beans.property.ReadOnlyObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
 
 public class ContentTab {
-    private final NoteBytes id;
+    private final NoteBytesArray id;
     private final NoteBytes parentId;
     private final String title;
-    private final Pane pane;
+    private final AppBox appBox;
     private final HBox tabBox;
     private final Button closeBtn;
-    private SimpleStringProperty currentId;
+    private final MenuItem menuItem;
+    private SimpleObjectProperty<NoteBytes> currentId;
     private EventHandler<ActionEvent> onTabClickHandler;
     
 
-    public ContentTab(NoteBytes id, NoteBytes parentId, String title, Pane pane) {
+    public ContentTab(NoteBytesArray id, NoteBytes parentId, String title, AppBox pane) {
         this.id = id;
         this.parentId = parentId;
         this.title = title;
-        this.pane = pane;
-        this.currentId = new SimpleStringProperty();
+        this.appBox = pane;
+        this.currentId = new SimpleObjectProperty<>();
         
         // Create tab box for display in horizontal tabs
         tabBox = new HBox(5);
@@ -65,12 +70,16 @@ public class ContentTab {
                 onTabClickHandler.handle(new ActionEvent());
             }
         });
+
+        menuItem = new MenuItem(title);
+        menuItem.setStyle("-fx-padding: 5px 10px;");
     }
     
-    public NoteBytes getId() { return id; }
+    public MenuItem getMenuItem() {return menuItem;}
+    public NoteBytesArray getId() { return id; }
     public NoteBytes getParentId() { return parentId; }
     public String getTitle() { return title; }
-    public Pane getPane() { return pane; }
+    public AppBox getAppBox() { return appBox; }
     public HBox getTabBox() { return tabBox; }
     
     public void onCloseBtn(EventHandler<ActionEvent> handler) {
@@ -81,7 +90,7 @@ public class ContentTab {
         this.onTabClickHandler = handler;
     }
     
-    public ReadOnlyStringProperty currentIdProperty() {
+    public ReadOnlyObjectProperty<NoteBytes> currentIdProperty() {
         return currentId;
     }
     

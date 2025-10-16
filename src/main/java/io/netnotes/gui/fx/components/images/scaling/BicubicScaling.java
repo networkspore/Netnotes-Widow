@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.scaling;
+package io.netnotes.gui.fx.components.images.scaling;
 
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;

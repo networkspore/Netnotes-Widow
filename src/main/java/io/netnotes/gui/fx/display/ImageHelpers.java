@@ -26,7 +26,7 @@ import javax.imageio.ImageWriter;
 
 import io.netnotes.engine.utils.HashData;
 import io.netnotes.gui.fx.app.FxResourceFactory;
-import io.netnotes.gui.fx.display.scaling.ScalingUtils;
+import io.netnotes.gui.fx.components.images.scaling.ScalingUtils;
 import javafx.concurrent.WorkerStateEvent;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.event.EventHandler;

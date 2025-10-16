@@ -43,7 +43,7 @@ public class FxResourceFactory {
 
     public final static String APP_NAME =  "Netnotes";
 
-    public static final GitHubInfo GITHUB_APP_INFO = new GitHubInfo("networkspore", "Netnotes-Widow");
+    public static final GitHubInfo GITHUB_PROJECT_INFO = new GitHubInfo("networkspore", "Netnotes-Widow");
 
     public static final String POM_GROUP_ID = "io.netnotes";
     public static final String POM_ARTIFACT_ID = "loader";
@@ -63,6 +63,11 @@ public class FxResourceFactory {
 
     public static final String EMOJI_FONT = FONTS_DIRECTORY + "/OpenSansEmoji.ttf";
     public static final String EMOJI_FONT_FAMILY = "OpenSansEmoji, Regular";
+
+    public final static String DEFAULT_CSS = CSS_DIRECTORY + "/widow.css";
+
+    public final static String WIDOW120 = ASSETS_DIRECTORY + "/widow-120.png";
+    public final static String WIDOW256 = ASSETS_DIRECTORY + "/widow-256.png";
 
     static{
         SvgImageLoaderFactory.install();
@@ -94,7 +99,7 @@ public class FxResourceFactory {
         }
     }
     
-    public final static String DEFAULT_CSS = CSS_DIRECTORY + "/startWindow.css";
+  
     public static Color txtColor = Color.web("#cdd4da");
     public static Color altColor = Color.web("#777777");
     public static Color formFieldColor = new Color(.8, .8, .8, .9);
@@ -109,8 +114,8 @@ public class FxResourceFactory {
     public final static ExtensionFilter JSON_EXT = new FileChooser.ExtensionFilter("application/json", "*.json");
 
 
-    public static Image icon = new Image(APP_ICON_15);
-    public static Image logo = new Image(APP_LOGO_256);
+    public static Image iconImage15 = new Image(APP_ICON_15);
+    public static Image logoImage256 = new Image(APP_LOGO_256);
     public static Image closeImg = new Image(ASSETS_DIRECTORY + "/close-outline-white.png");
     public static Image minimizeImg = new Image(ASSETS_DIRECTORY + "/minimize-white-20.png");
     public static Image globeImg = new Image(ASSETS_DIRECTORY + "/globe-outline-white-120.png");

@@ -78,7 +78,7 @@ public class PasswordStageHelpers {
 
         Scene passwordScene = new Scene(layoutVBox, FxResourceFactory.STAGE_WIDTH, FxResourceFactory.STAGE_HEIGHT);
         passwordScene.setFill(null);
-        passwordScene.getStylesheets().add("/css/startWindow.css");
+        passwordScene.getStylesheets().add(FxResourceFactory.DEFAULT_CSS);
         stage.setScene(passwordScene);
 
 
@@ -157,7 +157,7 @@ public class PasswordStageHelpers {
 
         Scene passwordScene = new Scene(layoutVBox, FxResourceFactory.STAGE_WIDTH, FxResourceFactory.STAGE_HEIGHT);
         passwordScene.setFill(null);
-        passwordScene.getStylesheets().add("/css/startWindow.css");
+        passwordScene.getStylesheets().add(FxResourceFactory.DEFAULT_CSS);
         stage.setScene(passwordScene);
 
 

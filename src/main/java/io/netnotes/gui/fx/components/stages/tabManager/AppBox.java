@@ -1,5 +1,7 @@
 package io.netnotes.gui.fx.components.stages.tabManager;
 
+import java.util.concurrent.CompletableFuture;
+
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesReadOnly;
 import javafx.scene.layout.BorderPane;
@@ -30,10 +32,7 @@ public class AppBox extends BorderPane {
         return m_name;
     }
 
-    public void shutdown() {
-        // Override in subclasses to cleanup
-    }
-
+  
     // Abstract method for subclasses to implement initialization
     protected void initialize() {
         // Override in subclasses
@@ -58,6 +57,15 @@ public class AppBox extends BorderPane {
             onHeightChanged(height);
         }
     }
+
+    public double getLastWidth(){
+        return lastWidth;
+    }
+
+    public double getLastHeight(){
+        return lastHeight;
+    }
+
     
     /**
      * Called when the content width changes.
@@ -73,5 +81,9 @@ public class AppBox extends BorderPane {
      */
     protected void onHeightChanged(double newHeight) {
         // Subclasses can override
+    }
+
+    public CompletableFuture<Void> shutdown(){
+        return null;
     }
 }

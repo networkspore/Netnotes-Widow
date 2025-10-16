@@ -7,8 +7,8 @@ import java.math.BigDecimal;
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteUUID;
 import io.netnotes.engine.utils.MathHelpers;
+import io.netnotes.gui.fx.components.images.scaling.ZoomRGB;
 import io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm;
-import io.netnotes.gui.fx.display.scaling.ZoomRGB;
 
 public class ZoomEffect extends ImageEffects {
     public static BigDecimal MIN_ZOOM_AMOUNT = BigDecimal.valueOf(0.00001);

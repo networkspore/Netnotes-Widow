@@ -8,6 +8,7 @@ import io.netnotes.gui.fx.app.FxResourceFactory;
 import io.netnotes.gui.fx.app.control.FrameRateMonitor;
 import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.utils.TaskUtils;
+
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
@@ -17,6 +18,7 @@ import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.Tooltip;
 import javafx.scene.image.Image;
 import javafx.scene.layout.VBox;
+import javafx.scene.layout.Region;
 
 public class SideBarButton extends VBox {
     private final BufferedButton m_button;
@@ -31,14 +33,19 @@ public class SideBarButton extends VBox {
         Tooltip tooltip = new Tooltip(name);
         tooltip.setShowDelay(javafx.util.Duration.millis(100));
 
-        m_button = new BufferedButton( appIcon, FxResourceFactory.BTN_IMG_SIZE);
+        m_button = new BufferedButton(appIcon, FxResourceFactory.BTN_IMG_SIZE);
         m_button.setContentDisplay(ContentDisplay.LEFT);
         m_button.setTooltip(tooltip);
+        m_button.setMaxWidth(Double.MAX_VALUE);
+        m_button.setId("menuTabBtn");
         
         m_title = name;
 
         super.getChildren().add(m_button);
         setAlignment(Pos.TOP_LEFT);
+        
+        // Ensure button fills available width
+        this.setFillWidth(true);
    
     }
 
@@ -58,7 +65,6 @@ public class SideBarButton extends VBox {
 
     public void setOnAction(EventHandler<ActionEvent> onAction){
         m_button.setOnAction(onAction);
-
     }
 
     public void setContent(Node content){
@@ -76,13 +82,13 @@ public class SideBarButton extends VBox {
         return m_isInitialized;
     }
 
-
     public void setOnExpandedChanged(Consumer<Boolean> onExpandedChanged){
         m_onExpandedChanged = onExpandedChanged;
     }
 
     public CompletableFuture<Void> updateIsExpanded(boolean isExpanded) {
         m_isInitialized = true;
+        m_isExpanded = isExpanded;
 
         CompletableFuture<Void> task = CompletableFuture
             .runAsync(() -> {
@@ -90,15 +96,43 @@ public class SideBarButton extends VBox {
                     Thread.sleep(FrameRateMonitor.getInstance().getRecommendedDebounceDelay());
                     TaskUtils.noDelay(e -> {
                         if (isExpanded) {
+                            // Expanded state
                             m_button.setText(m_title);
-                            m_button.setId("menuTabBtnExpanded");
-                            setPrefWidth(SideBarPanel.DEFAULT_LARGE_WIDTH - 5);
+                           
+                            m_button.setContentDisplay(ContentDisplay.LEFT);
+                            
+                            // Let parent container control width
+                            this.setPrefWidth(Region.USE_COMPUTED_SIZE);
+                            this.setMinWidth(SideBarPanel.DEFAULT_LARGE_WIDTH - 10);
+                            this.setMaxWidth(Double.MAX_VALUE);
+                            
+                            // Clear fixed height
+                            this.setPrefHeight(Region.USE_COMPUTED_SIZE);
+                            this.setMinHeight(Region.USE_PREF_SIZE);
+                            this.setMaxHeight(Double.MAX_VALUE);
+                            
+                            m_button.setPrefHeight(Region.USE_COMPUTED_SIZE);
+                            m_button.setMinHeight(SideBarPanel.DEFAULT_SMALL_WIDTH);
+                            
                             addContent();
                         } else {
+                            // Collapsed state
                             removeContent();
                             m_button.setText(null);
-                            m_button.setId("menuTabBtn");
-                            setPrefWidth(SideBarPanel.DEFAULT_SMALL_WIDTH - 5);
+                          
+                            m_button.setContentDisplay(ContentDisplay.CENTER);
+                            
+                            // Fixed size when collapsed
+                            double size = SideBarPanel.DEFAULT_SMALL_WIDTH - 5;
+                            this.setPrefWidth(size);
+                            this.setMinWidth(size);
+                            this.setMaxWidth(size);
+                            this.setPrefHeight(size);
+                            this.setMinHeight(size);
+                            this.setMaxHeight(size);
+                            
+                            m_button.setPrefWidth(size);
+                            m_button.setPrefHeight(size);
                         }
                     });
                 } catch (InterruptedException e) {
@@ -116,7 +150,7 @@ public class SideBarButton extends VBox {
     }
 
     private void addContent(){
-        if(m_content != null && !getChildren().contains(m_content)){
+        if(m_content != null && !super.getChildren().contains(m_content)){
             super.getChildren().add(m_content);
         }
     }
@@ -126,6 +160,15 @@ public class SideBarButton extends VBox {
            super.getChildren().remove(m_content);
         }
     }
-
-
+    
+    /**
+     * Manually update width based on parent container
+     * Called by SideBarPanel when scrollbar visibility changes
+     */
+    public void updateWidth(double containerWidth) {
+        if (m_isExpanded && containerWidth > 0) {
+            this.setPrefWidth(containerWidth);
+            this.setMaxWidth(containerWidth);
+        }
+    }
 }

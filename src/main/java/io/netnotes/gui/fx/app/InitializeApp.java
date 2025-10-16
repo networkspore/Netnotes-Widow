@@ -20,7 +20,7 @@ import javafx.stage.Stage;
 
 public class InitializeApp extends Application {
  
-    private static WidowApp m_widow = null;
+    private static NetnotesWidow m_widow = null;
     
     @Override
     public void start(Stage appStage) {
@@ -39,8 +39,8 @@ public class InitializeApp extends Application {
 
     private void login(Stage appStage){
         
-         PasswordStageHelpers.enterPassword("Login - " + FxResourceFactory.APP_NAME, FxResourceFactory.icon, 
-            FxResourceFactory.logo, appStage, 
+         PasswordStageHelpers.enterPassword("Login - " + FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
+            FxResourceFactory.logoImage256, appStage, 
             onClose->{ shutdownNow(); }, 
             onEnter->{
                 Object source = onEnter.getSource();
@@ -73,8 +73,8 @@ public class InitializeApp extends Application {
         final Text passText = new Text(createPassString);
 
         
-        PasswordStageHelpers.enterPassword("Create Password - " + FxResourceFactory.APP_NAME, FxResourceFactory.icon, 
-            FxResourceFactory.logo, appStage, 
+        PasswordStageHelpers.enterPassword("Create Password - " + FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
+            FxResourceFactory.logoImage256, appStage, 
             onClose->{
                 passField.close();
                 Object passUserData = passField.getUserData();
@@ -133,7 +133,7 @@ public class InitializeApp extends Application {
     }
 
     public static void startWidow(Stage appStage, SettingsData settingsData){
-        m_widow = new WidowApp(settingsData, appStage, new AppInterface() {
+        m_widow = new NetnotesWidow(settingsData, appStage, new AppInterface() {
             @Override
             public void shutdownNow(){
                 shutdownNow();
