@@ -21,7 +21,7 @@ import io.netnotes.engine.noteFiles.SettingsData;
 import io.netnotes.engine.noteFiles.notePath.NoteFileService;
 import io.netnotes.engine.noteFiles.notePath.NotePath;
 import io.netnotes.engine.utils.streams.StreamUtils;
-import io.netnotes.gui.fx.components.stages.tabManager.AppBox;
+import io.netnotes.gui.fx.components.stages.tabManager.ContentBox;
 import io.netnotes.gui.fx.components.stages.tabManager.SideBarButton;
 import io.netnotes.gui.fx.components.stages.tabManager.TabManagerStage;
 import io.netnotes.gui.fx.display.FxResourceFactory;
@@ -181,7 +181,7 @@ public class NetnotesWidow {
         return new TabManagerInterface(){
 
             @Override
-            public void addTab(NoteBytes tabId,String tabName, AppBox tabBox) {
+            public void addTab(NoteBytes tabId,String tabName, ContentBox tabBox) {
                 m_tabManagerStage.addTab(tabId, appId, tabName, tabBox);
             }
 
@@ -208,12 +208,12 @@ public class NetnotesWidow {
             }
 
             @Override
-            public AppBox[] getAppBoxes() {
+            public ContentBox[] getAppBoxes() {
                 return m_tabManagerStage.getAppBoxesByParentId(appId);
             }
 
             @Override
-            public AppBox getAppBox(NoteBytes tabId) {
+            public ContentBox getAppBox(NoteBytes tabId) {
                 return m_tabManagerStage.getTab(tabId, appId).getAppBox();
             }
             
@@ -342,7 +342,7 @@ public class NetnotesWidow {
          * @param tabName Display name for the tab
          * @param tabBox The AppBox to display in the tab
          */
-        void addTab(NoteBytes tabId, String tabName, AppBox tabBox);
+        void addTab(NoteBytes tabId, String tabName, ContentBox tabBox);
         
         /**
          * Remove a tab owned by this app.
@@ -366,9 +366,9 @@ public class NetnotesWidow {
          */
         void setCurrentTab(NoteBytes tabId);
         
-        AppBox[] getAppBoxes();
+        ContentBox[] getAppBoxes();
 
-        AppBox getAppBox(NoteBytes tabId);
+        ContentBox getAppBox(NoteBytes tabId);
         /**
          * Get the main application stage.
          * Needed for registering with DeferredLayoutManager.

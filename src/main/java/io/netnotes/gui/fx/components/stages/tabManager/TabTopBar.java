@@ -186,6 +186,8 @@ public class TabTopBar extends HBox {
                         tabSelectionListener.onTabSelected(tabId);
                     }
                 });
+
+            
                 
                 KeyMenuItem existingCloseTabsItem = KeyMenuItem.getKeyMenuItem(tabsMenuButton.getItems(), CLOSE_TABS_KEY);
 
@@ -214,17 +216,7 @@ public class TabTopBar extends HBox {
     }
 
    
-    
-    public void setActiveTab(NoteBytes tabId) {
-        // Update menu items to show active tab
-        for (Map.Entry<NoteBytesArray, ContentTab> entry : allTabs.entrySet()) {
-            if (entry.getKey().equals(tabId)) {
-                entry.getValue().getMenuItem().setStyle("-fx-padding: 5px 10px; -fx-background-color: #4a4a4a;");
-            } else {
-                entry.getValue().getMenuItem().setStyle("-fx-padding: 5px 10px;");
-            }
-        }
-    }
+
     
     public KeyMenuItem removeMenuItem(NoteBytesArray tabId){
         return KeyMenuItem.removeKeyItem(tabsMenuButton.getItems(), tabId);

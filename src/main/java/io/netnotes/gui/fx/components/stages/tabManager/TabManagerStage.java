@@ -1,13 +1,22 @@
 package io.netnotes.gui.fx.components.stages.tabManager;
 
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.scene.Scene;
+import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.scene.image.Image;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
@@ -16,7 +25,7 @@ import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
 import io.netnotes.gui.fx.display.control.layout.LayoutData;
 
-public class TabManagerStage {
+public class TabManagerStage implements TabWindow {
     private final static double DEFAULT_WIDTH = 1000;
     private final static double DEFAULT_HEIGHT = 650;
 
@@ -27,18 +36,18 @@ public class TabManagerStage {
     private final SideBarPanel sideBar;
     private final StackPane contentArea;
     
-    private NoteBytes currentTabId;
+    private SimpleObjectProperty<NoteBytesArray> m_currentTabIdProperty = new SimpleObjectProperty<>(null);
     
-    // Track current content dimensions
     private double contentWidth = 800;
     private double contentHeight = 600;
 
     private final Runnable m_onClose;
     private final ConcurrentHashMap<NoteBytesArray, ContentTab> allTabs = new ConcurrentHashMap<>();
     
+    
     public TabManagerStage(Stage stage, String title, Image smallIcon15, Image windowIcon100, Runnable onClose) {
         this.stage = stage;
-        this.currentTabId = null;
+    
         // Setup stage
         stage.setTitle(title);
         stage.initStyle(javafx.stage.StageStyle.UNDECORATED);
@@ -122,10 +131,11 @@ public class TabManagerStage {
         stage.getScene().widthProperty().addListener((obs, old, newVal) -> {
             DeferredLayoutManager.markDirty(sideBar);
             DeferredLayoutManager.markDirty(contentArea);
+            NoteBytesArray currentTabId = m_currentTabIdProperty.get();
             // Trigger layout for all active tabs
             if (currentTabId != null) {
                 ContentTab tab = this.allTabs.get(currentTabId);
-                if (tab != null && tab.getAppBox() instanceof AppBox) {
+                if (tab != null && tab.getAppBox() instanceof ContentBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
             }
@@ -134,10 +144,11 @@ public class TabManagerStage {
         stage.getScene().heightProperty().addListener((obs, old, newVal) -> {
             DeferredLayoutManager.markDirty(sideBar);
             DeferredLayoutManager.markDirty(contentArea);
+            NoteBytesArray currentTabId = m_currentTabIdProperty.get();
             // Trigger layout for all active tabs
             if (currentTabId != null) {
                 ContentTab tab = this.allTabs.get(currentTabId);
-                if (tab != null && tab.getAppBox() instanceof AppBox) {
+                if (tab != null && tab.getAppBox() instanceof ContentBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
             }
@@ -147,31 +158,36 @@ public class TabManagerStage {
         sideBar.getExpandButton().setOnAction(e -> {
             sideBar.toggleExpanded();
             DeferredLayoutManager.markDirty(contentArea);
+            NoteBytesArray currentTabId = m_currentTabIdProperty.get();
             // Trigger layout for all active tabs
             if (currentTabId != null) {
                 ContentTab tab = this.allTabs.get(currentTabId);
-                if (tab != null && tab.getAppBox() instanceof AppBox) {
+                if (tab != null && tab.getAppBox() instanceof ContentBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
             }
         });
     }
     
-    public void addTab(NoteBytes tabId, NoteBytes parentId, String title, AppBox appBox) {
+     /**
+     * Create a new tab and add to tracking
+     */
+    public void addTab(NoteBytes tabId, NoteBytes parentId, String title, ContentBox appBox) {
         NoteBytesArray compositeId = new NoteBytesArray(parentId, tabId);
 
         if (this.allTabs.containsKey(compositeId)) {
-            // Tab already exists, just switch to it
             setCurrentTab(compositeId);
             return;
         }
         
-        ContentTab tab = new ContentTab(compositeId, parentId, title, appBox, getStage());
-       
+        ContentTab tab = new ContentTab(compositeId, parentId, title, appBox, this);
         
-        // Register AppBox with layout manager
+        // Add to global tracking
+        allTabs.put(compositeId, tab);
+        NoteBytesArray currentTabId = m_currentTabIdProperty.get();
+
+        // Register with layout manager
         DeferredLayoutManager.register(stage, appBox, ctx -> {
-            // Only layout if this is the active tab
             if (currentTabId != null && currentTabId.equals(compositeId)) {
                 return new LayoutData.Builder()
                     .width(contentWidth)
@@ -181,45 +197,151 @@ public class TabManagerStage {
             return new LayoutData.Builder().build();
         });
         
-        // Setup close handler
-        tab.onCloseBtn(e -> removeTab(compositeId));
-        
-        // Add to top bar
-        topBar.addTab(tab);
-        
-        // Set as current tab
-        setCurrentTab(compositeId);
+        // Display in this window
+        displayTab(tab);
     }
     
-    public void removeTab(NoteBytes id, NoteBytes parentId) {
-        removeTab(new NoteBytesArray(id, parentId));
+
+    @Override
+    public double getTopBarHeight() {
+        return topBar.getHeight();
+    }
+    
+    public Collection<ContentTab> getAllTabs() {
+        return allTabs.values();
     }
 
-    protected void removeTab(NoteBytesArray id) {
-       
-        boolean isCurrentTab = currentTabId != null && currentTabId.equals(id);
+     /**
+     * Get all tabs in the primary (main) window
+     */
+    public List<ContentTab> getTabsInPrimaryWindow() {
+        return allTabs.values().stream()
+            .filter(ContentTab::isInPrimaryWindow)
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Get all tabs in a specific window
+     */
+    public List<ContentTab> getTabsInWindow(TabWindow window) {
+        return allTabs.values().stream()
+            .filter(tab -> tab.getParentWindow() == window)
+            .collect(Collectors.toList());
+    }
+
+    /**
+     * Get all unique detached windows
+     */
+    public Set<TabWindow> getAllDetachedWindows() {
+        return allTabs.values().stream()
+            .map(ContentTab::getParentWindow)
+            .filter(window -> window != null && !window.isPrimaryWindow())
+            .collect(Collectors.toSet());
+    }
+
+
+    /**
+     * Find detached window at screen coordinates
+     */
+    public TabWindow findWindowAt(double screenX, double screenY) {
+        // Check primary window first
+        if (containsPoint(screenX, screenY)) {
+            return this;
+        }
+        
+        // Check detached windows
+        return getAllDetachedWindows().stream()
+            .filter(window -> window.containsPoint(screenX, screenY))
+            .findFirst()
+            .orElse(null);
+    }
+
+    @Override
+    public void displayTab(ContentTab tab) {
+        NoteBytesArray compositeId = tab.getId();
+        
+        // Add visual tab to top bar
+        topBar.addTab(tab);
+        
+        // Setup handlers
+        tab.onTabClicked(e -> setCurrentTab(compositeId));
+        tab.onCloseBtn(e -> removeTab(compositeId)); // Note: closeTab, not removeTab
+        
+        // Show the tab
+        setCurrentTab(compositeId);
+    }
+
+     /**
+     * Actually close/delete a tab permanently
+     */
+    public void removeTab(NoteBytesArray tabId) {
+        ContentTab tab = allTabs.get(tabId);
+        if (tab == null) return;
+        
+        TabWindow window = tab.getParentWindow();
+        
+        // Remove from display
+        if (window != null) {
+            window.undisplayTab(tabId);
+        }
+        
+        // Shutdown the app box
+        ContentBox appBox = tab.getAppBox();
+        if (appBox != null) {
+            appBox.shutdown();
+        }
+        
+        // Remove from global tracking
+        allTabs.remove(tabId);
+        
+        // Close empty detached windows
+        if (window != null && !window.isPrimaryWindow() && isWindowEmpty(window)) {
+            window.close();
+        }
+    }
+
+    
+    @Override
+    public void undisplayTab(NoteBytesArray tabId) {
+        // Only remove from visual display, don't delete
+        ContentTab tab = allTabs.get(tabId);
+        if (tab == null) return;
+
+        NoteBytesArray currentTabId = m_currentTabIdProperty.get();
+
+        boolean isCurrentTab = currentTabId != null && currentTabId.equals(tabId);
         
         if (isCurrentTab) {
             contentArea.getChildren().clear();
-            currentTabId = null;
-        }
-        
-        ContentTab tab = topBar.removeTab(id);
-        if (tab != null) {
-            AppBox appBox = (AppBox) tab.getAppBox();
-            appBox.shutdown();
-            topBar.removeTab(id);
-        }
-        
-        // If this was the current tab, switch to another
-        if (isCurrentTab && !this.allTabs.isEmpty()) {
-            for (NoteBytesArray tabId : this.allTabs.keySet()) {
-                setCurrentTab(tabId);
-                break;
+            m_currentTabIdProperty.set(null);
+            
+            // Switch to another tab if available in this window
+            for (ContentTab t : getTabsInWindow(this)) {
+                if (!t.getId().equals(tabId)) {
+                    setCurrentTab(t.getId());
+                    break;
+                }
             }
         }
+        
+        // Remove from top bar
+        topBar.removeTab(tabId);
     }
     
+    /**
+     * Check if a window still has tabs
+     */
+    public boolean isWindowEmpty(TabWindow window) {
+        return getTabsInWindow(window).isEmpty();
+    }
+
+    
+
+     public void removeTab(NoteBytes id, NoteBytes parentId) {
+        removeTab(new NoteBytesArray(id, parentId));
+    }
+
+  
     public void removeTabsByParentId(NoteBytes parentId) {
         ArrayList<NoteBytesArray> toRemove = new ArrayList<>();
         for (Map.Entry<NoteBytesArray, ContentTab> entry : this.allTabs.entrySet()) {
@@ -236,15 +358,15 @@ public class TabManagerStage {
     }
 
 
-     public AppBox[] getAppBoxesByParentId(NoteBytes parentId) {
-        ArrayList<AppBox> appBoxes = new ArrayList<>();
+     public ContentBox[] getAppBoxesByParentId(NoteBytes parentId) {
+        ArrayList<ContentBox> appBoxes = new ArrayList<>();
         for (Map.Entry<NoteBytesArray, ContentTab> entry : this.allTabs.entrySet()) {
             ContentTab tab = entry.getValue();
             if (parentId != null && parentId.equals(tab.getParentId())) {
-                appBoxes.add((AppBox)entry.getValue().getAppBox());
+                appBoxes.add((ContentBox)entry.getValue().getAppBox());
             } 
         }
-        return appBoxes.toArray(new AppBox[0]);
+        return appBoxes.toArray(new ContentBox[0]);
     }
     
     public void closeAllTabs() {
@@ -274,26 +396,29 @@ public class TabManagerStage {
         setCurrentTab(new NoteBytesArray(id, parentId));
     }
     
-    protected void setCurrentTab(NoteBytesArray id) {
-        if (!this.allTabs.containsKey(id)) {
+    @Override
+    public void setCurrentTab(NoteBytesArray tabId) {
+         if (tabId == null){
+            m_currentTabIdProperty.set(null);
+            contentArea.getChildren().clear();
             return;
         }
+
+        ContentTab tab = getTab(tabId);
+
+        if (tab == null || tab.getParentWindow() != this) return;
         
-        currentTabId = id;
+        m_currentTabIdProperty.set(tabId);
+
         contentArea.getChildren().clear();
-        
-        ContentTab tab = this.allTabs.get(id);
-        if (tab != null) {
-            contentArea.getChildren().add(tab.getAppBox());
-            topBar.setActiveTab(id);
-            
-            // Trigger layout for the new active tab
-            DeferredLayoutManager.markDirty(tab.getAppBox());
-        }
+
+        contentArea.getChildren().add(tab.getAppBox());
+        DeferredLayoutManager.markDirty(tab.getAppBox());
+     
     }
     
-    public NoteBytes getCurrentTabId() {
-        return currentTabId;
+    public NoteBytesArray getCurrentTabId() {
+        return m_currentTabIdProperty.get();
     }
     
     public SideBarPanel getSideBar() {
@@ -304,12 +429,38 @@ public class TabManagerStage {
         return topBar;
     }
     
+    @Override
     public void show() {
         stage.show();
     }
     
+     @Override
+    public void close() {
+        if (m_onClose != null) {
+            m_onClose.run();
+        }
+        stage.close();
+    }
+    
+    @Override
     public Stage getStage() {
         return stage;
+    }
+
+    @Override
+    public boolean isPrimaryWindow() {
+        return true;
+    }
+
+    @Override
+    public boolean containsPoint(double screenX, double screenY) {
+        double x = stage.getX();
+        double y = stage.getY();
+        double w = stage.getWidth();
+        double h = topBar.getHeight();
+        
+        return screenX >= x && screenX <= x + w &&
+               screenY >= y && screenY <= y + h;
     }
     
     public double getContentWidth() {
@@ -318,5 +469,156 @@ public class TabManagerStage {
     
     public double getContentHeight() {
         return contentHeight;
+    }
+
+     // ==================== Tab Movement Methods ====================
+    
+    private void createDetachedWindow(NoteBytesArray tabId, double screenX, double screenY) {
+        ContentTab tab = allTabs.get(tabId);
+        if (tab == null) return;
+        
+        TabWindow oldWindow = tab.getParentWindow();
+        
+        // Remove from current window's display
+        if (oldWindow != null) {
+            oldWindow.undisplayTab(tabId);
+        }
+        
+        // Create new detached window
+        DetachedTabWindow window = new DetachedTabWindow(
+            this,
+            tab.getTitle(),
+            FxResourceFactory.iconImage15,
+            screenX - 100,
+            screenY - 20
+        );
+        
+        // Set tab's location and add to window
+        tab.setParentWindow(window);
+        tab.setCurrentIdProperty(window.currentIdProperty());
+        window.displayTab(tab);
+        
+        window.show();
+        
+    }
+    
+    public void moveTabToWindow(NoteBytesArray tabId, TabWindow targetWindow) {
+        ContentTab tab = allTabs.get(tabId);
+        if (tab == null) return;
+        
+        TabWindow oldWindow = tab.getParentWindow();
+        if (oldWindow == targetWindow) return; // Already there
+        
+        // Remove from old window's display
+        if (oldWindow != null) {
+            oldWindow.undisplayTab(tabId);
+        }
+        
+        // Update tab's location
+        tab.setParentWindow(targetWindow);
+        
+        // Add to new window
+        targetWindow.displayTab(tab);
+        
+        // Check if old window is now empty and should close
+        if (oldWindow != null && !oldWindow.isPrimaryWindow() && isWindowEmpty(oldWindow)) {
+            oldWindow.close();
+        }
+    }
+
+    // ==================== Drag and Drop ====================
+    
+    public void enableTabDragging() {
+        for (ContentTab tab : allTabs.values()) {
+            enableDragForTab(tab);
+        }
+    }
+    
+    private void enableDragForTab(ContentTab tab) {
+        HBox tabBox = tab.getTabBox();
+        final double[] dragStart = new double[2];
+        final boolean[] isDragging = new boolean[1];
+        final Stage[] ghostStage = new Stage[1];
+        
+        tabBox.setOnMousePressed(e -> {
+            if (e.isPrimaryButtonDown()) {
+                dragStart[0] = e.getScreenX();
+                dragStart[1] = e.getScreenY();
+                isDragging[0] = false;
+                e.consume();
+            }
+        });
+        
+        tabBox.setOnMouseDragged(e -> {
+            double deltaX = e.getScreenX() - dragStart[0];
+            double deltaY = e.getScreenY() - dragStart[1];
+            double distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            if (!isDragging[0] && distance > 15) {
+                isDragging[0] = true;
+                ghostStage[0] = createGhostTab(tab, e.getScreenX(), e.getScreenY());
+            }
+            
+            if (isDragging[0] && ghostStage[0] != null) {
+                ghostStage[0].setX(e.getScreenX() - 50);
+                ghostStage[0].setY(e.getScreenY() - 15);
+            }
+            e.consume();
+        });
+        
+        tabBox.setOnMouseReleased(e -> {
+            if (isDragging[0]) {
+                handleTabDrop(tab, e.getScreenX(), e.getScreenY());
+                if (ghostStage[0] != null) {
+                    ghostStage[0].close();
+                }
+            }
+            isDragging[0] = false;
+            e.consume();
+        });
+    }
+    
+    private Stage createGhostTab(ContentTab tab, double x, double y) {
+        Stage ghost = new Stage(StageStyle.TRANSPARENT);
+        ghost.setAlwaysOnTop(true);
+        ghost.initOwner(stage);
+        
+        Label ghostLabel = new Label(tab.getTitle());
+        ghostLabel.setStyle(
+            "-fx-background-color: rgba(70, 70, 70, 0.9); " +
+            "-fx-padding: 5px 15px; " +
+            "-fx-text-fill: white; " +
+            "-fx-background-radius: 3px; " +
+            "-fx-effect: dropshadow(gaussian, rgba(0,0,0,0.5), 10, 0, 0, 2);"
+        );
+        
+        Scene ghostScene = new Scene(new StackPane(ghostLabel));
+        ghostScene.setFill(Color.TRANSPARENT);
+        ghost.setScene(ghostScene);
+        ghost.setX(x);
+        ghost.setY(y);
+        ghost.show();
+        
+        return ghost;
+    }
+    
+    private void handleTabDrop(ContentTab tab, double screenX, double screenY) {
+        NoteBytesArray tabId = tab.getId();
+        
+        // Find which window (if any) we're dropping on
+        TabWindow targetWindow = findWindowAt(screenX, screenY);
+        
+        if (targetWindow != null) {
+            // Dropped on a window's top bar
+            moveTabToWindow(tabId, targetWindow);
+        } else {
+            // Dropped in empty space - create new detached window
+            createDetachedWindow(tabId, screenX, screenY);
+        }
+    }
+
+    @Override
+    public SimpleObjectProperty<NoteBytesArray> currentIdProperty() {
+        return m_currentTabIdProperty;
     }
 }

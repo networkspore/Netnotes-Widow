@@ -1538,14 +1538,37 @@
 
 
 #selectedMenuItem {
-    -fx-background-color: #333333;
+    -fx-padding: 5px 10px;
+    -fx-padding: 5px 10px;
+    -fx-font-size: 14px;
+    -fx-font-family: 'OCR A Extended';
+    -fx-background-color: #33333360;
     -fx-text-fill: white;
+    -fx-opacity: .9;
+}
+
+#selectedMenuItem:hover {
+    -fx-opacity: 1;
 }
 
 
 #selectedMenuItem .label {
    
     -fx-text-fill: white;
+}
+
+#tabMenuItem {
+    -fx-font-size: 14px;
+    -fx-font-family: 'OCR A Extended';
+    -fx-padding: 5px 10px;
+    -fx-background-color: #22222260;
+    -fx-text-fill: #cccccc;
+}
+
+
+#tabMenuItem .label {
+   
+     -fx-text-fill: #cccccc;
 }
 
 

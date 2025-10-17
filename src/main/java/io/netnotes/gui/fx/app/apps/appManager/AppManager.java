@@ -12,7 +12,7 @@ import io.netnotes.engine.noteBytes.NoteBytesReadOnly;
 import io.netnotes.engine.noteBytes.processing.AsyncNoteBytesWriter;
 import io.netnotes.engine.utils.github.GitHubInfo;
 import io.netnotes.gui.fx.app.NetnotesWidow;
-import io.netnotes.gui.fx.components.stages.tabManager.AppBox;
+import io.netnotes.gui.fx.components.stages.tabManager.ContentBox;
 import io.netnotes.gui.fx.components.stages.tabManager.SideBarButton;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.scene.image.Image;
@@ -33,7 +33,7 @@ public class AppManager implements NetnotesWidow.IWidowApp {
     
     private GitHubInfo m_gitHubInfo;
     
-    private Map<NoteBytes,AppBox> m_openAppBoxes = new ConcurrentHashMap<>();
+    private Map<NoteBytes,ContentBox> m_openAppBoxes = new ConcurrentHashMap<>();
 
     public AppManager() {
         m_appId = new NoteBytesReadOnly(new NoteBytes("AppManager"));
@@ -112,7 +112,7 @@ public class AppManager implements NetnotesWidow.IWidowApp {
 
     public CompletableFuture<Void> shutdown(AsyncNoteBytesWriter progressWriter) {
         List<CompletableFuture<Void>> futures = new ArrayList<>();
-        for(Map.Entry<NoteBytes,AppBox> entry : m_openAppBoxes.entrySet()){
+        for(Map.Entry<NoteBytes,ContentBox> entry : m_openAppBoxes.entrySet()){
             futures.add(entry.getValue().shutdown());
         }
 

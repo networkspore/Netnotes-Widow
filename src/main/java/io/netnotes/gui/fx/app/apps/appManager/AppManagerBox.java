@@ -11,7 +11,7 @@ import io.netnotes.gui.fx.app.apps.AppInformation;
 import io.netnotes.gui.fx.app.apps.AppRelease;
 import io.netnotes.gui.fx.app.apps.AppReleasesFetcher;
 import io.netnotes.gui.fx.app.apps.AvailableAppsLoader;
-import io.netnotes.gui.fx.components.stages.tabManager.AppBox;
+import io.netnotes.gui.fx.components.stages.tabManager.ContentBox;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
 import io.netnotes.gui.fx.display.control.layout.LayoutData;
@@ -37,7 +37,7 @@ import javafx.stage.Stage;
 /**
  * Main AppManager view - shows available apps for installation.
  */
-class AppManagerBox extends AppBox {
+class AppManagerBox extends ContentBox {
 
     public static final NoteBytesReadOnly ID = new NoteBytesReadOnly("AppManager-Main");
     

@@ -2,12 +2,12 @@ package io.netnotes.gui.fx.app.apps.appManager;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.gui.fx.app.apps.AppInformation;
-import io.netnotes.gui.fx.components.stages.tabManager.AppBox;
+import io.netnotes.gui.fx.components.stages.tabManager.ContentBox;
 
 /**
  * Detailed view for a specific app.
  */
-class AppDetailsBox extends AppBox {
+class AppDetailsBox extends ContentBox {
     
     private final AppInformation m_appInfo;
 
