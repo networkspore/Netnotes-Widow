@@ -4,9 +4,10 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
-import io.netnotes.gui.fx.app.FxResourceFactory;
-import io.netnotes.gui.fx.app.control.FrameRateMonitor;
+
 import io.netnotes.gui.fx.components.buttons.BufferedButton;
+import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.gui.fx.display.control.FrameRateMonitor;
 import io.netnotes.gui.fx.utils.TaskUtils;
 
 import javafx.collections.ObservableList;

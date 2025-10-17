@@ -16,12 +16,12 @@ import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 
-import io.netnotes.gui.fx.app.FxResourceFactory;
-import io.netnotes.gui.fx.app.control.layout.DeferredLayoutManager;
-import io.netnotes.gui.fx.app.control.layout.LayoutData;
-import io.netnotes.gui.fx.app.control.layout.ScrollPaneHelper;
 import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.components.menus.BufferedMenuButton;
+import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
+import io.netnotes.gui.fx.display.control.layout.LayoutData;
+import io.netnotes.gui.fx.display.control.layout.ScrollPaneHelper;
 import io.netnotes.gui.fx.utils.TaskUtils;
 
 public class SideBarPanel extends VBox {

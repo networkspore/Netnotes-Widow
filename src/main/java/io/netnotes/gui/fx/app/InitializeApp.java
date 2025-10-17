@@ -10,7 +10,7 @@ import io.netnotes.engine.noteFiles.SettingsData.InvalidPasswordException;
 import io.netnotes.gui.fx.components.fields.PassField;
 import io.netnotes.gui.fx.components.notifications.Alerts;
 import io.netnotes.gui.fx.components.stages.PasswordStageHelpers;
-
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.application.Application;
 import javafx.application.HostServices;
 import javafx.application.Platform;

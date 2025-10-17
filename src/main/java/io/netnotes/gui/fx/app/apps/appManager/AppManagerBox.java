@@ -1,27 +1,36 @@
 package io.netnotes.gui.fx.app.apps.appManager;
 
+
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesReadOnly;
 import io.netnotes.engine.utils.github.GitHubInfo;
-
-import io.netnotes.gui.fx.app.FxResourceFactory;
 import io.netnotes.gui.fx.app.apps.AppInformation;
 import io.netnotes.gui.fx.app.apps.AppRelease;
 import io.netnotes.gui.fx.app.apps.AppReleasesFetcher;
 import io.netnotes.gui.fx.app.apps.AvailableAppsLoader;
-import io.netnotes.gui.fx.app.control.layout.ScrollPaneHelper;
 import io.netnotes.gui.fx.components.stages.tabManager.AppBox;
+import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
+import io.netnotes.gui.fx.display.control.layout.LayoutData;
+import io.netnotes.gui.fx.display.control.layout.ScrollPaneHelper;
 import io.netnotes.gui.fx.utils.TaskUtils;
-
+import javafx.application.Platform;
 import javafx.beans.binding.DoubleExpression;
 import javafx.beans.property.DoubleProperty;
 import javafx.beans.property.SimpleDoubleProperty;
+import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
+import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.Region;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
@@ -47,7 +56,7 @@ class AppManagerBox extends AppBox {
     
     private ScrollPaneHelper m_scrollHelper;
     
-    private java.util.List<AppInformation> m_availableApps;
+    private List<AppInformation> m_availableApps;
     private AvailableAppsLoader m_appsLoader;
     private AppReleasesFetcher m_releasesFetcher;
     
@@ -66,33 +75,33 @@ class AppManagerBox extends AppBox {
     
     @Override
     protected void initialize() {
-        m_mainContainer = new javafx.scene.layout.VBox(15);
-        m_mainContainer.setPadding(new javafx.geometry.Insets(20));
+        m_mainContainer = new VBox(15);
+        m_mainContainer.setPadding(new Insets(20));
         
         // Header
         m_headerBox = createHeader();
         
         // Apps list content
-        m_appsListBox = new javafx.scene.layout.VBox(10);
-        m_appsListBox.setPadding(new javafx.geometry.Insets(10));
+        m_appsListBox = new VBox(10);
+        m_appsListBox.setPadding(new Insets(10));
         
         // ScrollPane for apps
-        m_appsScrollPane = new javafx.scene.control.ScrollPane(m_appsListBox);
+        m_appsScrollPane = new ScrollPane(m_appsListBox);
         m_appsScrollPane.setFitToWidth(true);
         m_appsScrollPane.setStyle("-fx-background: #1e1e1e; -fx-background-color: #1e1e1e;");
-        javafx.scene.layout.VBox.setVgrow(m_appsScrollPane, javafx.scene.layout.Priority.ALWAYS);
+        VBox.setVgrow(m_appsScrollPane, Priority.ALWAYS);
         
         // Status label
-        m_statusLabel = new javafx.scene.control.Label("Loading available apps...");
+        m_statusLabel = new Label("Loading available apps...");
         m_statusLabel.setStyle("-fx-text-fill: #888888; -fx-font-size: 12px;");
         
         // Setup ScrollPaneHelper with DeferredLayoutManager
         DoubleExpression[] heightOffsets = {
             m_headerBox.heightProperty(),
-            new javafx.beans.property.SimpleDoubleProperty(80)
+            new SimpleDoubleProperty(80)
         };
         
-        m_scrollHelper = new io.netnotes.gui.fx.app.control.layout.ScrollPaneHelper(
+        m_scrollHelper = new ScrollPaneHelper(
             m_stage,
             m_appsScrollPane, 
             m_appsListBox, 
@@ -106,9 +115,9 @@ class AppManagerBox extends AppBox {
         this.setCenter(m_mainContainer);
         
         // Register main container with DeferredLayoutManager
-        io.netnotes.gui.fx.app.control.layout.DeferredLayoutManager.register(
+        DeferredLayoutManager.register(
             m_stage, m_mainContainer, ctx -> {
-                return new io.netnotes.gui.fx.app.control.layout.LayoutData.Builder()
+                return new LayoutData.Builder()
                     .width(m_contentWidth.get())
                     .height(m_contentHeight.get())
                     .build();
@@ -117,12 +126,12 @@ class AppManagerBox extends AppBox {
         
         // Listen for content dimension changes
         m_contentWidth.addListener((obs, old, newVal) -> {
-            io.netnotes.gui.fx.app.control.layout.DeferredLayoutManager.markDirty(m_mainContainer);
+            DeferredLayoutManager.markDirty(m_mainContainer);
             m_scrollHelper.refresh();
         });
         
         m_contentHeight.addListener((obs, old, newVal) -> {
-            io.netnotes.gui.fx.app.control.layout.DeferredLayoutManager.markDirty(m_mainContainer);
+            DeferredLayoutManager.markDirty(m_mainContainer);
             m_scrollHelper.refresh();
         });
         
@@ -130,17 +139,17 @@ class AppManagerBox extends AppBox {
         loadAvailableApps();
     }
     
-    private javafx.scene.layout.HBox createHeader() {
-        javafx.scene.layout.HBox headerBox = new javafx.scene.layout.HBox(20);
-        headerBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+    private HBox createHeader() {
+        HBox headerBox = new HBox(20);
+        headerBox.setAlignment(Pos.CENTER_LEFT);
         
-        javafx.scene.control.Label header = new javafx.scene.control.Label("Application Store");
+       Label header = new Label("Application Store");
         header.setStyle("-fx-font-size: 24px; -fx-text-fill: #ffffff; -fx-font-weight: bold;");
         
-        javafx.scene.layout.Region spacer = new javafx.scene.layout.Region();
-        javafx.scene.layout.HBox.setHgrow(spacer, javafx.scene.layout.Priority.ALWAYS);
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
         
-        m_refreshButton = new javafx.scene.control.Button("↻ Refresh");
+        m_refreshButton = new Button("↻ Refresh");
         m_refreshButton.setStyle("-fx-background-color: #4a4a4a; -fx-text-fill: #ffffff; " +
                                 "-fx-padding: 8px 15px; -fx-background-radius: 5px;");
         m_refreshButton.setOnAction(e -> loadAvailableApps());
@@ -157,7 +166,7 @@ class AppManagerBox extends AppBox {
         
         m_appsLoader.loadAvailableApps()
             .thenAccept(apps -> {
-                javafx.application.Platform.runLater(() -> {
+                Platform.runLater(() -> {
                     m_availableApps = apps;
                     displayApps(apps);
                     m_statusLabel.setText("Found " + apps.size() + " available applications");
@@ -165,7 +174,7 @@ class AppManagerBox extends AppBox {
                 });
             })
             .exceptionally(error -> {
-                javafx.application.Platform.runLater(() -> {
+                Platform.runLater(() -> {
                     m_statusLabel.setText("Error loading apps: " + error.getMessage());
                     m_statusLabel.setStyle("-fx-text-fill: #ff6666; -fx-font-size: 12px;");
                     m_refreshButton.setDisable(false);
@@ -174,23 +183,23 @@ class AppManagerBox extends AppBox {
             });
     }
     
-    private void displayApps(java.util.List<AppInformation> apps) {
+    private void displayApps(List<AppInformation> apps) {
         m_appsListBox.getChildren().clear();
         
         for (AppInformation app : apps) {
-            javafx.scene.layout.VBox appCard = createAppCard(app);
+            VBox appCard = createAppCard(app);
             m_appsListBox.getChildren().add(appCard);
         }
     }
     
-    private javafx.scene.layout.VBox createAppCard(AppInformation app) {
-        javafx.scene.layout.VBox card = new javafx.scene.layout.VBox(10);
-        card.setPadding(new javafx.geometry.Insets(15));
+    private VBox createAppCard(AppInformation app) {
+        VBox card = new VBox(10);
+        card.setPadding(new Insets(15));
         card.setStyle("-fx-background-color: #2b2b2b; -fx-background-radius: 8px; " +
                      "-fx-border-color: #3c3c3c; -fx-border-width: 1px; -fx-border-radius: 8px;");
         
-        javafx.scene.layout.HBox topBox = new javafx.scene.layout.HBox(15);
-        topBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        HBox topBox = new HBox(15);
+        topBox.setAlignment(Pos.CENTER_LEFT);
         
         // App icon
         if (app.getIcon() != null) {
@@ -202,28 +211,28 @@ class AppManagerBox extends AppBox {
         }
         
         // App info
-        javafx.scene.layout.VBox infoBox = new javafx.scene.layout.VBox(5);
-        javafx.scene.layout.HBox.setHgrow(infoBox, javafx.scene.layout.Priority.ALWAYS);
+        VBox infoBox = new VBox(5);
+        HBox.setHgrow(infoBox, Priority.ALWAYS);
         
-        javafx.scene.control.Label nameLabel = new javafx.scene.control.Label(app.getName());
+        Label nameLabel = new Label(app.getName());
         nameLabel.setStyle("-fx-font-size: 18px; -fx-text-fill: #ffffff; -fx-font-weight: bold;");
         
-        javafx.scene.control.Label descLabel = new javafx.scene.control.Label(app.getDescription());
+        Label descLabel = new Label(app.getDescription());
         descLabel.setStyle("-fx-text-fill: #cccccc; -fx-font-size: 13px;");
         descLabel.setWrapText(true);
         
         infoBox.getChildren().addAll(nameLabel, descLabel);
         
         // Action buttons
-        javafx.scene.layout.VBox actionBox = new javafx.scene.layout.VBox(5);
-        actionBox.setAlignment(javafx.geometry.Pos.CENTER_RIGHT);
+        VBox actionBox = new VBox(5);
+        actionBox.setAlignment(Pos.CENTER_RIGHT);
         
-        javafx.scene.control.Button viewDetailsBtn = new javafx.scene.control.Button("View Details");
+        Button viewDetailsBtn = new Button("View Details");
         viewDetailsBtn.setStyle("-fx-background-color: #4a90e2; -fx-text-fill: #ffffff; " +
                                 "-fx-padding: 6px 12px; -fx-background-radius: 5px;");
         viewDetailsBtn.setOnAction(e -> showAppDetails(app));
         
-        javafx.scene.control.Button installBtn = new javafx.scene.control.Button("Install");
+        Button installBtn = new Button("Install");
         installBtn.setStyle("-fx-background-color: #5cb85c; -fx-text-fill: #ffffff; " +
                                  "-fx-padding: 6px 12px; -fx-background-radius: 5px;");
         installBtn.setOnAction(e -> installApp(app));
@@ -234,7 +243,7 @@ class AppManagerBox extends AppBox {
         
         // GitHub files info
         if (app.getGitHubFiles() != null && app.getGitHubFiles().length > 0) {
-            javafx.scene.control.Label ghLabel = new javafx.scene.control.Label("Source: " + 
+            Label ghLabel = new Label("Source: " + 
                 app.getGitHubFiles()[0].getGitHubInfo().getUser() + "/" +
                 app.getGitHubFiles()[0].getGitHubInfo().getProject());
             ghLabel.setStyle("-fx-text-fill: #888888; -fx-font-size: 11px;");
@@ -251,18 +260,18 @@ class AppManagerBox extends AppBox {
         m_statusLabel.setStyle("-fx-text-fill: #888888; -fx-font-size: 12px;");
         
         // Create details dialog
-        javafx.scene.control.Dialog<Void> dialog = new javafx.scene.control.Dialog<>();
+        Dialog<Void> dialog = new Dialog<>();
         dialog.setTitle(app.getName());
         dialog.setHeaderText("Application Details");
         
-        javafx.scene.layout.VBox content = new javafx.scene.layout.VBox(15);
-        content.setPadding(new javafx.geometry.Insets(20));
+        VBox content = new VBox(15);
+        content.setPadding(new Insets(20));
         content.setStyle("-fx-background-color: #2b2b2b;");
         content.setPrefWidth(600);
         
         // App header with icon
-        javafx.scene.layout.HBox headerBox = new javafx.scene.layout.HBox(15);
-        headerBox.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        HBox headerBox = new HBox(15);
+        headerBox.setAlignment(Pos.CENTER_LEFT);
         
         if (app.getIcon() != null) {
             javafx.scene.image.ImageView iconView = new javafx.scene.image.ImageView(app.getIcon());
@@ -271,11 +280,11 @@ class AppManagerBox extends AppBox {
             headerBox.getChildren().add(iconView);
         }
         
-        javafx.scene.layout.VBox titleBox = new javafx.scene.layout.VBox(5);
-        javafx.scene.control.Label nameLabel = new javafx.scene.control.Label(app.getName());
+        VBox titleBox = new VBox(5);
+        Label nameLabel = new Label(app.getName());
         nameLabel.setStyle("-fx-font-size: 24px; -fx-text-fill: #ffffff; -fx-font-weight: bold;");
         
-        javafx.scene.control.Label descLabel = new javafx.scene.control.Label(app.getDescription());
+        Label descLabel = new Label(app.getDescription());
         descLabel.setStyle("-fx-text-fill: #cccccc; -fx-font-size: 14px;");
         descLabel.setWrapText(true);
         
@@ -285,33 +294,33 @@ class AppManagerBox extends AppBox {
         content.getChildren().add(headerBox);
         
         // Releases section
-        javafx.scene.control.Label releasesLabel = new javafx.scene.control.Label("Available Releases");
+        Label releasesLabel = new Label("Available Releases");
         releasesLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: #ffffff; -fx-font-weight: bold;");
         content.getChildren().add(releasesLabel);
         
-        javafx.scene.control.Label loadingLabel = new javafx.scene.control.Label("Loading releases...");
+        Label loadingLabel = new Label("Loading releases...");
         loadingLabel.setStyle("-fx-text-fill: #888888;");
         content.getChildren().add(loadingLabel);
         
         dialog.getDialogPane().setContent(content);
-        dialog.getDialogPane().getButtonTypes().add(javafx.scene.control.ButtonType.CLOSE);
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
         dialog.getDialogPane().setStyle("-fx-background-color: #2b2b2b;");
         
         // Load releases
         m_releasesFetcher.fetchReleasesForApp(app)
             .thenAccept(releases -> {
-                javafx.application.Platform.runLater(() -> {
+                Platform.runLater(() -> {
                     content.getChildren().remove(loadingLabel);
                     
                     if (releases.isEmpty()) {
-                        javafx.scene.control.Label noReleasesLabel = 
-                            new javafx.scene.control.Label("No releases found");
+                        Label noReleasesLabel = 
+                            new Label("No releases found");
                         noReleasesLabel.setStyle("-fx-text-fill: #888888;");
                         content.getChildren().add(noReleasesLabel);
                     } else {
-                        javafx.scene.layout.VBox releasesBox = new javafx.scene.layout.VBox(10);
+                        VBox releasesBox = new VBox(10);
                         for (AppRelease release : releases) {
-                            javafx.scene.layout.HBox releaseItem = createReleaseItem(release);
+                            HBox releaseItem = createReleaseItem(release);
                             releasesBox.getChildren().add(releaseItem);
                         }
                         content.getChildren().add(releasesBox);
@@ -322,10 +331,10 @@ class AppManagerBox extends AppBox {
                 });
             })
             .exceptionally(error -> {
-                javafx.application.Platform.runLater(() -> {
+                Platform.runLater(() -> {
                     content.getChildren().remove(loadingLabel);
-                    javafx.scene.control.Label errorLabel = 
-                        new javafx.scene.control.Label("Error: " + error.getMessage());
+                    Label errorLabel = 
+                        new Label("Error: " + error.getMessage());
                     errorLabel.setStyle("-fx-text-fill: #ff6666;");
                     content.getChildren().add(errorLabel);
                     
@@ -338,30 +347,30 @@ class AppManagerBox extends AppBox {
         dialog.show();
     }
     
-    private javafx.scene.layout.HBox createReleaseItem(AppRelease release) {
-        javafx.scene.layout.HBox box = new javafx.scene.layout.HBox(15);
-        box.setPadding(new javafx.geometry.Insets(10));
+    private HBox createReleaseItem(AppRelease release) {
+        HBox box = new HBox(15);
+        box.setPadding(new Insets(10));
         box.setStyle("-fx-background-color: #3c3c3c; -fx-background-radius: 5px;");
-        box.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        box.setAlignment(Pos.CENTER_LEFT);
         
-        javafx.scene.layout.VBox infoBox = new javafx.scene.layout.VBox(3);
-        javafx.scene.layout.HBox.setHgrow(infoBox, javafx.scene.layout.Priority.ALWAYS);
+        VBox infoBox = new VBox(3);
+        HBox.setHgrow(infoBox, Priority.ALWAYS);
         
-        javafx.scene.control.Label versionLabel = 
-            new javafx.scene.control.Label("Version: " + release.getVersion());
+        Label versionLabel = 
+            new Label("Version: " + release.getVersion());
         versionLabel.setStyle("-fx-text-fill: #ffffff; -fx-font-weight: bold;");
         
-        javafx.scene.control.Label tagLabel = 
-            new javafx.scene.control.Label("Tag: " + release.getTagName());
+        Label tagLabel = 
+            new Label("Tag: " + release.getTagName());
         tagLabel.setStyle("-fx-text-fill: #cccccc; -fx-font-size: 11px;");
         
-        javafx.scene.control.Label sizeLabel = 
-            new javafx.scene.control.Label("Size: " + formatSize(release.getSize()));
+        Label sizeLabel = 
+            new Label("Size: " + formatSize(release.getSize()));
         sizeLabel.setStyle("-fx-text-fill: #888888; -fx-font-size: 11px;");
         
         infoBox.getChildren().addAll(versionLabel, tagLabel, sizeLabel);
         
-        javafx.scene.control.Button installBtn = new javafx.scene.control.Button("Install");
+        Button installBtn = new Button("Install");
         installBtn.setStyle("-fx-background-color: #5cb85c; -fx-text-fill: #ffffff; " +
                             "-fx-padding: 5px 15px; -fx-background-radius: 5px;");
         installBtn.setOnAction(e -> installRelease(release));
@@ -376,7 +385,7 @@ class AppManagerBox extends AppBox {
         
         m_releasesFetcher.fetchReleasesForApp(app)
             .thenAccept(releases -> {
-                javafx.application.Platform.runLater(() -> {
+                Platform.runLater(() -> {
                     if (!releases.isEmpty()) {
                         AppRelease latestRelease = releases.get(0);
                         installRelease(latestRelease);
@@ -387,7 +396,7 @@ class AppManagerBox extends AppBox {
                 });
             })
             .exceptionally(error -> {
-                javafx.application.Platform.runLater(() -> {
+                Platform.runLater(() -> {
                     m_statusLabel.setText("Error: " + error.getMessage());
                     m_statusLabel.setStyle("-fx-text-fill: #ff6666; -fx-font-size: 12px;");
                 });
@@ -411,7 +420,7 @@ class AppManagerBox extends AppBox {
         System.out.println("Installing from: " + release.getDownloadUrl());
         
         // Simulate installation
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
+        CompletableFuture.runAsync(() -> {
             try {
                 Thread.sleep(2000); // Simulate download time
             } catch (InterruptedException e) {
@@ -419,14 +428,14 @@ class AppManagerBox extends AppBox {
             }
         }, TaskUtils.getVirtualExecutor())
         .thenRun(() -> {
-            javafx.application.Platform.runLater(() -> {
+            Platform.runLater(() -> {
                 m_statusLabel.setText("Successfully installed " + 
                     release.getAppInfo().getName() + " version " + release.getVersion());
                 m_statusLabel.setStyle("-fx-text-fill: #5cb85c; -fx-font-size: 12px;");
             });
         })
         .exceptionally(error -> {
-            javafx.application.Platform.runLater(() -> {
+            Platform.runLater(() -> {
                 m_statusLabel.setText("Installation failed: " + error.getMessage());
                 m_statusLabel.setStyle("-fx-text-fill: #ff6666; -fx-font-size: 12px;");
             });

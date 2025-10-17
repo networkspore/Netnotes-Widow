@@ -1,8 +1,8 @@
 package io.netnotes.gui.fx.components.stages;
 
-import io.netnotes.gui.fx.app.FxResourceFactory;
 import io.netnotes.gui.fx.components.fields.PassField;
 import io.netnotes.gui.fx.components.hboxes.TopBar;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.application.Platform;
 import javafx.event.ActionEvent;
 import javafx.geometry.Insets;

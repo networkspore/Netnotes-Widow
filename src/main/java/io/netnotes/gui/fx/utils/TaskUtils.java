@@ -6,7 +6,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import io.netnotes.engine.messaging.NoteMessaging;
-import io.netnotes.gui.fx.app.control.FrameRateMonitor;
+import io.netnotes.gui.fx.display.control.FrameRateMonitor;
 import javafx.concurrent.Task;
 import javafx.concurrent.WorkerStateEvent;
 import javafx.event.EventHandler;

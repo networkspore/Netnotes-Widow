@@ -9,7 +9,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 
-import io.netnotes.gui.fx.app.FxResourceFactory;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.application.Platform;
 import javafx.beans.value.ChangeListener;
 import javafx.geometry.Insets;

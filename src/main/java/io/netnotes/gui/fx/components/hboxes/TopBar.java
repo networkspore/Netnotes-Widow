@@ -12,8 +12,8 @@ import javafx.stage.Stage;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.input.MouseEvent;
-import io.netnotes.gui.fx.app.FxResourceFactory;
 import io.netnotes.gui.fx.components.buttons.IconButton;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.event.EventHandler;
 
 public class TopBar extends HBox {

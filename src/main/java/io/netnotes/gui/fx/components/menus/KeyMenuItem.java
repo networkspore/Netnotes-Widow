@@ -97,19 +97,21 @@ public class KeyMenuItem extends MenuItem implements KeyInterface{
     }
 
     public static KeyMenuItem getKeyMenuItem(List<MenuItem> items, NoteBytes key){
-        for(int i = 0; i < items.size(); i++){
-            MenuItem item = items.get(i);
-            if(item instanceof KeyMenuItem){
-                KeyMenuItem keyItem = (KeyMenuItem) item;
-                if(keyItem.getKey().equals(key)){
-                    return keyItem;
+        if(key != null){
+            for(int i = 0; i < items.size(); i++){
+                MenuItem item = items.get(i);
+                if(item instanceof KeyMenuItem){
+                    KeyMenuItem keyItem = (KeyMenuItem) item;
+                    if(keyItem.getKey().equals(key)){
+                        return keyItem;
+                    }
                 }
             }
         }
         return null;
     }
 
-    public static void removeeOldKeyItems(List<MenuItem> items, long timeStamp){
+    public static void removeOldKeyItems(List<MenuItem> items, long timeStamp){
          ArrayList<NoteBytes> removeList  = new ArrayList<>();
 
         for(int i = 0; i < items.size(); i++){
@@ -128,12 +130,14 @@ public class KeyMenuItem extends MenuItem implements KeyInterface{
     }
 
     public static KeyMenuItem removeKeyItem(List<MenuItem> items, NoteBytes key){
-        for(int i = 0; i < items.size(); i++){
-            MenuItem item = items.get(i);
-            if(item instanceof KeyMenuItem){
-                KeyMenuItem keyItem = (KeyMenuItem) item;
-                if(keyItem.getKey().equals(key)){
-                    return (KeyMenuItem) items.remove(i);
+        if(key != null){
+            for(int i = 0; i < items.size(); i++){
+                MenuItem item = items.get(i);
+                if(item instanceof KeyMenuItem){
+                    KeyMenuItem keyItem = (KeyMenuItem) item;
+                    if(keyItem.getKey().equals(key)){
+                        return (KeyMenuItem) items.remove(i);
+                    }
                 }
             }
         }
@@ -162,7 +166,7 @@ public class KeyMenuItem extends MenuItem implements KeyInterface{
                     }
                 }
 
-                KeyMenuItem.removeeOldKeyItems(menu.getItems(), timeStamp);
+                KeyMenuItem.removeOldKeyItems(menu.getItems(), timeStamp);
 
             }
     }

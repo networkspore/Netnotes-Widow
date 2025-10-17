@@ -1,9 +1,9 @@
 package io.netnotes.gui.fx.components.menus;
 
 
-import io.netnotes.gui.fx.app.FxResourceFactory;
 import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.components.images.BufferedImageView;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.scene.control.MenuButton;
 import javafx.scene.image.Image;
 

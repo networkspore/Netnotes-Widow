@@ -1,6 +1,6 @@
 package io.netnotes.gui.fx.components.buttons;
 
-import io.netnotes.gui.fx.app.FxResourceFactory;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.scene.control.Button;
 import javafx.scene.control.ContentDisplay;
 import javafx.scene.image.ImageView;

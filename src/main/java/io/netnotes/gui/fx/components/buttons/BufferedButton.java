@@ -4,8 +4,8 @@ package io.netnotes.gui.fx.components.buttons;
 
 
 import io.netnotes.engine.noteBytes.NoteBytesReadOnly;
-import io.netnotes.gui.fx.app.FxResourceFactory;
 import io.netnotes.gui.fx.components.images.BufferedImageView;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.scene.control.Button;
 import javafx.scene.image.Image;
 

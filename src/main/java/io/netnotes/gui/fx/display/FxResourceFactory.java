@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.app;
+package io.netnotes.gui.fx.display;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -114,14 +114,7 @@ public class FxResourceFactory {
     public final static ExtensionFilter JSON_EXT = new FileChooser.ExtensionFilter("application/json", "*.json");
 
 
-    public static Image iconImage15 = new Image(APP_ICON_15);
-    public static Image logoImage256 = new Image(APP_LOGO_256);
-    public static Image closeImg = new Image(ASSETS_DIRECTORY + "/close-outline-white.png");
-    public static Image minimizeImg = new Image(ASSETS_DIRECTORY + "/minimize-white-20.png");
-    public static Image globeImg = new Image(ASSETS_DIRECTORY + "/globe-outline-white-120.png");
-    public static Image globeImage30 = new Image(ASSETS_DIRECTORY + "/globe-outline-white-30.png");
-    public static Image settingsImg = new Image(ASSETS_DIRECTORY + "/settings-outline-white-120.png");
-    public static Image unknownImg = new Image(UNKNOWN_IMAGE_PATH);
+
 
     public static final String APP_ICON = ASSETS_DIRECTORY + "/apps-outline-35.png";
     public static final String CHECKMARK_ICON = ASSETS_DIRECTORY + "/checkmark-25.png";
@@ -130,6 +123,7 @@ public class FxResourceFactory {
     public static final String FILL_RIGHT_ICON = ASSETS_DIRECTORY + "/fillRight.png";
     public static final String CLOSE_ICON = ASSETS_DIRECTORY + "/close-outline-white.png";
     public static final String SETTINGS_ICON = ASSETS_DIRECTORY + "/settings-outline-white-30.png";
+    public static final String SETTINGS_ICON_120 = ASSETS_DIRECTORY + "/settings-outline-white-120.png";
     public static final String CARET_DOWN_ICON = ASSETS_DIRECTORY + "/caret-down-15.png";
     public static final String MENU_ICON = ASSETS_DIRECTORY + "/menu-outline-30.png";
     public static final String NAV_ICON = ASSETS_DIRECTORY + "/navigate-outline-white-30.png";
@@ -142,6 +136,16 @@ public class FxResourceFactory {
     public static final String NETWORK_ICON256 = ASSETS_DIRECTORY + "/globe-outline-white-120.png";
     public static final String TOGGLE_FRAME = ASSETS_DIRECTORY + "/expandFrame.png";
 
+
+    public static Image iconImage15 = new Image(APP_ICON_15);
+    public static Image logoImage256 = new Image(APP_LOGO_256);
+    public static Image closeImg = new Image(CLOSE_ICON);
+    public static Image minimizeImg = new Image(MINIMIZE_ICON);
+    public static Image maximizeImg = new Image(MAXIMIZE_ICON);
+    public static Image globeImg = new Image(NETWORK_ICON256);
+    public static Image globeImage30 = new Image(NETWORK_ICON);
+    public static Image settingsImg = new Image(SETTINGS_ICON_120);
+    public static Image unknownImg = new Image(UNKNOWN_IMAGE_PATH);
 
 
     public final static double STAGE_WIDTH = 450;

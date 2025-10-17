@@ -3,8 +3,8 @@ package io.netnotes.gui.fx.components.fields;
 import java.nio.charset.StandardCharsets;
 
 import io.netnotes.engine.noteBytes.NoteBytesEphemeral;
-import io.netnotes.gui.fx.app.FxResourceFactory;
 import io.netnotes.gui.fx.components.notifications.Alerts;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.TextField;
 import javafx.scene.input.KeyCode;

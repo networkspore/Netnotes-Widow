@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.app.control;
+package io.netnotes.gui.fx.display.control;
 
 /**
  * Global frame rate monitor for coordinating timing across all real-time components

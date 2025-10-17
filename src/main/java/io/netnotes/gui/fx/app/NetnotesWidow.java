@@ -24,6 +24,7 @@ import io.netnotes.engine.utils.streams.StreamUtils;
 import io.netnotes.gui.fx.components.stages.tabManager.AppBox;
 import io.netnotes.gui.fx.components.stages.tabManager.SideBarButton;
 import io.netnotes.gui.fx.components.stages.tabManager.TabManagerStage;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.utils.TaskUtils;
 import javafx.application.HostServices;
 import javafx.application.Application.Parameters;

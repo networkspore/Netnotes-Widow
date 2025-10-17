@@ -5,15 +5,16 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.StackPane;
 import javafx.stage.Stage;
 import javafx.scene.image.Image;
-import javafx.scene.control.Button;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.ArrayList;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
-import io.netnotes.gui.fx.app.FxResourceFactory;
-import io.netnotes.gui.fx.app.control.layout.DeferredLayoutManager;
-import io.netnotes.gui.fx.app.control.layout.LayoutData;
+import io.netnotes.gui.fx.components.buttons.BufferedButton;
+import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
+import io.netnotes.gui.fx.display.control.layout.LayoutData;
 
 public class TabManagerStage {
     private final static double DEFAULT_WIDTH = 1000;
@@ -33,25 +34,22 @@ public class TabManagerStage {
     private double contentHeight = 600;
 
     private final Runnable m_onClose;
-    
+    private final ConcurrentHashMap<NoteBytesArray, ContentTab> allTabs = new ConcurrentHashMap<>();
     
     public TabManagerStage(Stage stage, String title, Image smallIcon15, Image windowIcon100, Runnable onClose) {
         this.stage = stage;
         this.currentTabId = null;
-        
         // Setup stage
         stage.setTitle(title);
         stage.initStyle(javafx.stage.StageStyle.UNDECORATED);
         stage.getIcons().add(windowIcon100);
         m_onClose = onClose;
         // Create close button
-        Button closeBtn = new Button("×");
-        closeBtn.setStyle("-fx-background-color: transparent; -fx-text-fill: white; " +
-                         "-fx-font-size: 20px; -fx-padding: 0px 15px;");
+        BufferedButton closeBtn = new BufferedButton(FxResourceFactory.closeImg,20);
         closeBtn.setOnAction(e -> m_onClose.run());
         
         // Create top bar with tab management
-        topBar = new TabTopBar(smallIcon15, title, closeBtn, stage);
+        topBar = new TabTopBar(smallIcon15, title, closeBtn, stage, allTabs);
         topBar.setTabSelectionListener(tabId -> {
             if (tabId == null) {
                 closeAllTabs();
@@ -126,7 +124,7 @@ public class TabManagerStage {
             DeferredLayoutManager.markDirty(contentArea);
             // Trigger layout for all active tabs
             if (currentTabId != null) {
-                ContentTab tab = topBar.getTabs().get(currentTabId);
+                ContentTab tab = this.allTabs.get(currentTabId);
                 if (tab != null && tab.getAppBox() instanceof AppBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
@@ -138,7 +136,7 @@ public class TabManagerStage {
             DeferredLayoutManager.markDirty(contentArea);
             // Trigger layout for all active tabs
             if (currentTabId != null) {
-                ContentTab tab = topBar.getTabs().get(currentTabId);
+                ContentTab tab = this.allTabs.get(currentTabId);
                 if (tab != null && tab.getAppBox() instanceof AppBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
@@ -151,7 +149,7 @@ public class TabManagerStage {
             DeferredLayoutManager.markDirty(contentArea);
             // Trigger layout for all active tabs
             if (currentTabId != null) {
-                ContentTab tab = topBar.getTabs().get(currentTabId);
+                ContentTab tab = this.allTabs.get(currentTabId);
                 if (tab != null && tab.getAppBox() instanceof AppBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
@@ -162,13 +160,13 @@ public class TabManagerStage {
     public void addTab(NoteBytes tabId, NoteBytes parentId, String title, AppBox appBox) {
         NoteBytesArray compositeId = new NoteBytesArray(parentId, tabId);
 
-        if (topBar.getTabs().containsKey(compositeId)) {
+        if (this.allTabs.containsKey(compositeId)) {
             // Tab already exists, just switch to it
             setCurrentTab(compositeId);
             return;
         }
         
-        ContentTab tab = new ContentTab(compositeId, parentId, title, appBox);
+        ContentTab tab = new ContentTab(compositeId, parentId, title, appBox, getStage());
        
         
         // Register AppBox with layout manager
@@ -197,7 +195,7 @@ public class TabManagerStage {
         removeTab(new NoteBytesArray(id, parentId));
     }
 
-    private void removeTab(NoteBytesArray id) {
+    protected void removeTab(NoteBytesArray id) {
        
         boolean isCurrentTab = currentTabId != null && currentTabId.equals(id);
         
@@ -214,8 +212,8 @@ public class TabManagerStage {
         }
         
         // If this was the current tab, switch to another
-        if (isCurrentTab && !topBar.getTabs().isEmpty()) {
-            for (NoteBytesArray tabId : topBar.getTabs().keySet()) {
+        if (isCurrentTab && !this.allTabs.isEmpty()) {
+            for (NoteBytesArray tabId : this.allTabs.keySet()) {
                 setCurrentTab(tabId);
                 break;
             }
@@ -224,7 +222,7 @@ public class TabManagerStage {
     
     public void removeTabsByParentId(NoteBytes parentId) {
         ArrayList<NoteBytesArray> toRemove = new ArrayList<>();
-        for (Map.Entry<NoteBytesArray, ContentTab> entry : topBar.getTabs().entrySet()) {
+        for (Map.Entry<NoteBytesArray, ContentTab> entry : this.allTabs.entrySet()) {
             ContentTab tab = entry.getValue();
             if (parentId != null && parentId.equals(tab.getParentId())) {
                 toRemove.add(entry.getKey());
@@ -240,7 +238,7 @@ public class TabManagerStage {
 
      public AppBox[] getAppBoxesByParentId(NoteBytes parentId) {
         ArrayList<AppBox> appBoxes = new ArrayList<>();
-        for (Map.Entry<NoteBytesArray, ContentTab> entry : topBar.getTabs().entrySet()) {
+        for (Map.Entry<NoteBytesArray, ContentTab> entry : this.allTabs.entrySet()) {
             ContentTab tab = entry.getValue();
             if (parentId != null && parentId.equals(tab.getParentId())) {
                 appBoxes.add((AppBox)entry.getValue().getAppBox());
@@ -250,22 +248,22 @@ public class TabManagerStage {
     }
     
     public void closeAllTabs() {
-        ArrayList<NoteBytesArray> tabIds = new ArrayList<>(topBar.getTabs().keySet());
+        ArrayList<NoteBytesArray> tabIds = new ArrayList<>(this.allTabs.keySet());
         for (NoteBytesArray id : tabIds) {
             removeTab(id);
         }
     }
     
-    private ContentTab getTab(NoteBytesArray id) {
-        return topBar.getTabs().get(id);
+    protected ContentTab getTab(NoteBytesArray id) {
+        return this.allTabs.get(id);
     }
 
     public ContentTab getTab(NoteBytes id, NoteBytes parentId) {
         return getTab(new NoteBytesArray(id, parentId));
     }
     
-    private boolean containsTab(NoteBytesArray id) {
-        return topBar.getTabs().containsKey(id);
+    protected boolean containsTab(NoteBytesArray id) {
+        return this.allTabs.containsKey(id);
     }
 
     public boolean containsTab(NoteBytes id, NoteBytes parentId) {
@@ -276,15 +274,15 @@ public class TabManagerStage {
         setCurrentTab(new NoteBytesArray(id, parentId));
     }
     
-    private void setCurrentTab(NoteBytesArray id) {
-        if (!topBar.getTabs().containsKey(id)) {
+    protected void setCurrentTab(NoteBytesArray id) {
+        if (!this.allTabs.containsKey(id)) {
             return;
         }
         
         currentTabId = id;
         contentArea.getChildren().clear();
         
-        ContentTab tab = topBar.getTabs().get(id);
+        ContentTab tab = this.allTabs.get(id);
         if (tab != null) {
             contentArea.getChildren().add(tab.getAppBox());
             topBar.setActiveTab(id);

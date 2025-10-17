@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.app.control.layout;
+package io.netnotes.gui.fx.display.control.layout;
 
 import java.util.ArrayList;
 import java.util.List;

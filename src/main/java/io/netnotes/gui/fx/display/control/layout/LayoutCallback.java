@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.app.control.layout;
+package io.netnotes.gui.fx.display.control.layout;
 
 /**
  * Callback interface for node layout calculation

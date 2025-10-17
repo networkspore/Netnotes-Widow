@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.app.control.layout;
+package io.netnotes.gui.fx.display.control.layout;
 
 
 import java.util.ArrayList;
@@ -13,7 +13,7 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.Future;
 
-import io.netnotes.gui.fx.app.control.FrameRateMonitor;
+import io.netnotes.gui.fx.display.control.FrameRateMonitor;
 import io.netnotes.gui.fx.utils.TaskUtils;
 import javafx.scene.Node;
 import javafx.stage.Stage;

@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.app.control.layout;
+package io.netnotes.gui.fx.display.control.layout;
 
 import javafx.scene.Node;
 import javafx.stage.Stage;
