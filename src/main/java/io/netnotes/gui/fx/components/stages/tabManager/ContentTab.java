@@ -66,6 +66,9 @@ public class ContentTab {
             updateCurrentId(newVal != null && newVal.equals(id));
         
         tabBox.setOnMouseClicked(e -> {
+            if(m_currentIdProperty != null){
+                m_currentIdProperty.set(id);
+            }
             if (onTabClickHandler != null) {
                 onTabClickHandler.handle(new ActionEvent());
             }
@@ -84,6 +87,10 @@ public class ContentTab {
         });
 
        
+    }
+
+    public SimpleObjectProperty<NoteBytesArray>  currentIdProperty(){
+        return m_currentIdProperty;
     }
 
     public void setCurrentIdProperty(SimpleObjectProperty<NoteBytesArray> currentIdProperty){
@@ -128,7 +135,6 @@ public class ContentTab {
 
     public KeyMenuItem getMenuItem() {
         KeyMenuItem menuItem = new KeyMenuItem(id, new NoteString(title), System.currentTimeMillis(), KeyMenuItem.VALUE_NOT_KEY);
-        menuItem.setId("tabMenuItem");
         Runnable updateTabCss = ()->{
             NoteBytesArray currentId = getParentWindow().currentIdProperty().get();
             if(currentId != null && currentId.equals(getId())){
@@ -137,6 +143,11 @@ public class ContentTab {
                 menuItem.setId("tabMenuItem");
             }
         };
+        menuItem.setOnAction(e->{
+            if(m_currentIdProperty != null){
+                m_currentIdProperty.set(getId());
+            }
+        });
 
         getParentWindow().currentIdProperty().addListener((obs,oldVal,newVal)->updateTabCss.run());
         updateTabCss.run();
@@ -146,7 +157,11 @@ public class ContentTab {
     public NoteBytes getParentId() { return parentId; }
     public String getTitle() { return title; }
     public ContentBox getAppBox() { return appBox; }
-    public HBox getTabBox() { return tabBox; }
+    
+    
+    public HBox getTabBox() { 
+        return tabBox; 
+    }
     
     public void onCloseBtn(EventHandler<ActionEvent> handler) {
         closeBtn.setOnAction(handler);

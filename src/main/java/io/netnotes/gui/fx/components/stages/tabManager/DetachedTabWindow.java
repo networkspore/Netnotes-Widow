@@ -6,6 +6,10 @@ import java.util.List;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
 import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
+import io.netnotes.gui.fx.display.control.layout.LayoutData;
+import javafx.beans.binding.DoubleExpression;
+import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -23,43 +27,61 @@ public class DetachedTabWindow implements TabWindow {
     private final Stage stage;
     private final TabManagerStage manager;
     private final HBox topBar;
-    private final HBox tabsBox;
+    private final TabBar tabBar;
     private final StackPane contentArea;
+    
     
     private final SimpleObjectProperty< NoteBytesArray> m_currentTabIdProperty = new SimpleObjectProperty<>(null);
     
-    public DetachedTabWindow(TabManagerStage manager, String initialTitle, 
+   public DetachedTabWindow(TabManagerStage manager, String initialTitle, 
                             Image icon, double x, double y) {
-        this.manager = manager;
+      this.manager = manager;
         this.stage = new Stage();
         stage.initStyle(StageStyle.UNDECORATED);
         stage.setX(x);
         stage.setY(y);
         
-        // Simple top bar
+        // Top bar container
         topBar = new HBox(5);
         topBar.setPadding(new Insets(7, 8, 3, 10));
         topBar.setId("topBar");
+        topBar.setAlignment(Pos.CENTER_LEFT);
         
+        // Icon
         ImageView iconView = new ImageView(icon);
         iconView.setFitWidth(20);
         iconView.setFitHeight(20);
-        
-        // Tabs display
-        tabsBox = new HBox(5);
-        tabsBox.setAlignment(Pos.CENTER_LEFT);
-        HBox.setHgrow(tabsBox, Priority.ALWAYS);
+        iconView.setPreserveRatio(true);
         
         // Close button
         BufferedButton closeBtn = new BufferedButton(FxResourceFactory.closeImg, 20);
         closeBtn.setOnAction(e -> close());
+        closeBtn.setPadding(new Insets(0, 5, 0, 3));
+        closeBtn.setId("closeBtn");
         
-        topBar.getChildren().addAll(iconView, tabsBox, closeBtn);
+        // Create reusable tab bar
+        tabBar = new TabBar(
+            manager,
+            this, // 'this' DetachedTabWindow implements TabWindow
+            new SimpleDoubleProperty(800), // estimate width
+            new SimpleDoubleProperty(40),  // estimate height
+            new DoubleExpression[] {
+                new SimpleDoubleProperty(iconView.getFitWidth())
+            },
+            new DoubleExpression[] {
+                new SimpleDoubleProperty(closeBtn.getWidth() + 10)
+            }
+        );
+        HBox.setHgrow(tabBar, Priority.ALWAYS);
+        
+        topBar.getChildren().addAll(iconView, tabBar, closeBtn);
         makeDraggable();
         
         // Content area
         contentArea = new StackPane();
         contentArea.setStyle("-fx-background-color: #1e1e1e;");
+        
+       
         
         BorderPane root = new BorderPane();
         root.setTop(topBar);
@@ -69,6 +91,30 @@ public class DetachedTabWindow implements TabWindow {
         scene.setFill(null);
         scene.getStylesheets().add(FxResourceFactory.DEFAULT_CSS);
         stage.setScene(scene);
+
+        m_currentTabIdProperty.addListener((obs,oldval, newval)->{
+            if (newval == null){
+                contentArea.getChildren().clear();
+                return;
+            }
+
+            ContentTab tab = manager.getTab(newval);
+
+            if (tab == null || tab.getParentWindow() != this) return;
+        
+            contentArea.getChildren().clear();
+            contentArea.getChildren().add(tab.getAppBox());
+
+            DeferredLayoutManager.markDirty(tab.getAppBox());
+        });
+    }
+
+    public double getContentWidth(){
+        return contentArea.getLayoutBounds().getWidth();
+    }
+
+    public double getContentHeight(){
+        return contentArea.getLayoutBounds().getHeight();
     }
     
     // ==================== TabWindow Interface Implementation ====================
@@ -80,68 +126,65 @@ public class DetachedTabWindow implements TabWindow {
     
      @Override
     public void displayTab(ContentTab tab) {
-        NoteBytesArray tabId = tab.getId();
-        
-        // Add visual tab to topBar
-        HBox tabBox = tab.getTabBox();
-        if (!tabsBox.getChildren().contains(tabBox)) {
-            tabsBox.getChildren().add(tabBox);
+        if(tab == null){
+            return;
         }
-        
-        // Setup handlers
-        tab.onTabClicked(e -> setCurrentTab(tabId));
+
+        NoteBytesArray tabId = tab.getId();
+        ContentBox appBox = tab.getAppBox();
+    
+        tabBar.addTab(tab);
+   
+ 
         tab.onCloseBtn(e -> manager.removeTab(tabId)); // Use closeTab
         
-        // Show this tab
-        setCurrentTab(tabId);
+ 
+
+        DeferredLayoutManager.register(getStage(), appBox, ctx -> {
+            if (m_currentTabIdProperty.get() != null && m_currentTabIdProperty.get().equals(tabId)) {
+                return new LayoutData.Builder()
+                    .width(contentArea.getLayoutBounds().getWidth())
+                    .height(contentArea.getLayoutBounds().getHeight())
+                    .build();
+            }
+            return new LayoutData.Builder().build();
+        });
+            
+        tab.setCurrentIdProperty(m_currentTabIdProperty);
     }
 
     @Override
     public void undisplayTab(NoteBytesArray tabId) {
-        ContentTab tab = manager.getTab(tabId);
-        if (tab == null) return;
-        
-        // Remove from visual display
-        tabsBox.getChildren().remove(tab.getTabBox());
-        
-        List<ContentTab> remainingTabs = manager.getTabsInWindow(this);
-        boolean isEmpty = remainingTabs.isEmpty();
-
-        NoteBytesArray currentTabId = m_currentTabIdProperty.get();
-
-        // Clear content if this was current
-        if (tabId.equals(currentTabId)) {
-            contentArea.getChildren().clear();
-           
-            
-            setCurrentTab(!isEmpty ? remainingTabs.get(0).getId() : null);
-          
+        if(tabId == null){
+            return;
         }
+        // Remove from tab bar
+        ContentTab tab = tabBar.removeTab(tabId);
+        
+        // Clear content if this was current
+        if (tabId.equals(m_currentTabIdProperty.get())) {
 
-        if(isEmpty){
-            stage.close();
+            setCurrentTab(null);
+            
+            // Switch to another tab if available
+            List<ContentTab> remainingTabs = manager.getTabsInWindow(this);
+            if (!remainingTabs.isEmpty()) {
+                setCurrentTab(remainingTabs.get(0).getId());
+            }
+        }
+        
+        ContentBox appBox = tab.getAppBox();
+        DeferredLayoutManager.unregister(appBox);
+
+        if(tab != null && m_currentTabIdProperty == tab.currentIdProperty()){
+            tab.setCurrentIdProperty(null);
         }
     }
     
     
     @Override
     public void setCurrentTab(NoteBytesArray tabId) {
-        if (tabId == null){
-            m_currentTabIdProperty.set(null);
-            contentArea.getChildren().clear();
-            return;
-        }
-
-        ContentTab tab = manager.getTab(tabId);
-
-        if (tab == null || tab.getParentWindow() != this) return;
-        
-        
         m_currentTabIdProperty.set(tabId);
-        
-        contentArea.getChildren().clear();
-        contentArea.getChildren().add(tab.getAppBox());
-        
     }
     
     @Override

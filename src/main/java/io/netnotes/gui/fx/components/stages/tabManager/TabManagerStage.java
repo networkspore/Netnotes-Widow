@@ -58,14 +58,8 @@ public class TabManagerStage implements TabWindow {
         closeBtn.setOnAction(e -> m_onClose.run());
         
         // Create top bar with tab management
-        topBar = new TabTopBar(smallIcon15, title, closeBtn, stage, allTabs);
-        topBar.setTabSelectionListener(tabId -> {
-            if (tabId == null) {
-                closeAllTabs();
-            } else {
-                setCurrentTab(new NoteBytesArray(tabId.get()));
-            }
-        });
+        topBar = new TabTopBar(smallIcon15, title, closeBtn, stage, this);
+
         
         // Create sidebar
         sideBar = new SideBarPanel();
@@ -88,6 +82,21 @@ public class TabManagerStage implements TabWindow {
         
         // Register with DeferredLayoutManager
         setupLayoutManagement();
+
+        m_currentTabIdProperty.addListener((obs,oldval, newval)->{
+            if (newval == null){
+                contentArea.getChildren().clear();
+                return;
+            }
+
+            ContentTab tab = getTab(newval);
+
+            if (tab == null || tab.getParentWindow() != this) return;
+        
+            contentArea.getChildren().clear();
+            contentArea.getChildren().add(tab.getAppBox());
+            DeferredLayoutManager.markDirty(tab.getAppBox());
+        });
     }
 
     public Scene getScene(){
@@ -184,23 +193,14 @@ public class TabManagerStage implements TabWindow {
         
         // Add to global tracking
         allTabs.put(compositeId, tab);
-        NoteBytesArray currentTabId = m_currentTabIdProperty.get();
-
-        // Register with layout manager
-        DeferredLayoutManager.register(stage, appBox, ctx -> {
-            if (currentTabId != null && currentTabId.equals(compositeId)) {
-                return new LayoutData.Builder()
-                    .width(contentWidth)
-                    .height(contentHeight)
-                    .build();
-            }
-            return new LayoutData.Builder().build();
-        });
-        
+     
+     
         // Display in this window
         displayTab(tab);
     }
-    
+
+
+
 
     @Override
     public double getTopBarHeight() {
@@ -258,17 +258,31 @@ public class TabManagerStage implements TabWindow {
 
     @Override
     public void displayTab(ContentTab tab) {
-        NoteBytesArray compositeId = tab.getId();
-        
-        // Add visual tab to top bar
+        if(tab == null){
+            return;
+        }
+        //
+        NoteBytesArray tabId = tab.getId();
+
+        ContentBox appBox = tab.getAppBox();
+
+        DeferredLayoutManager.register(getStage(), appBox, ctx -> {
+            if (m_currentTabIdProperty.get() != null && m_currentTabIdProperty.get().equals(tabId)) {
+                return new LayoutData.Builder()
+                    .width(contentWidth)
+                    .height(contentHeight)
+                    .build();
+            }
+            return new LayoutData.Builder().build();
+        });
+
         topBar.addTab(tab);
-        
-        // Setup handlers
-        tab.onTabClicked(e -> setCurrentTab(compositeId));
-        tab.onCloseBtn(e -> removeTab(compositeId)); // Note: closeTab, not removeTab
-        
-        // Show the tab
-        setCurrentTab(compositeId);
+     
+        tab.onCloseBtn(e -> removeTab(tabId)); // Use closeTab
+      
+
+        tab.setCurrentIdProperty(m_currentTabIdProperty);
+
     }
 
      /**
@@ -323,7 +337,8 @@ public class TabManagerStage implements TabWindow {
                 }
             }
         }
-        
+        ContentBox appBox = tab.getAppBox();
+        DeferredLayoutManager.unregister(appBox);
         // Remove from top bar
         topBar.removeTab(tabId);
     }
@@ -398,23 +413,7 @@ public class TabManagerStage implements TabWindow {
     
     @Override
     public void setCurrentTab(NoteBytesArray tabId) {
-         if (tabId == null){
-            m_currentTabIdProperty.set(null);
-            contentArea.getChildren().clear();
-            return;
-        }
-
-        ContentTab tab = getTab(tabId);
-
-        if (tab == null || tab.getParentWindow() != this) return;
-        
         m_currentTabIdProperty.set(tabId);
-
-        contentArea.getChildren().clear();
-
-        contentArea.getChildren().add(tab.getAppBox());
-        DeferredLayoutManager.markDirty(tab.getAppBox());
-     
     }
     
     public NoteBytesArray getCurrentTabId() {

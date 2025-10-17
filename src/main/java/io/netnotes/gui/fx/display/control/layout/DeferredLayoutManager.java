@@ -89,6 +89,18 @@ public class DeferredLayoutManager {
     public static void register(Stage stage, Node node, LayoutCallback callback) {
         INSTANCE.registerNode(stage, node, callback);
     }
+
+    public static void unregister(Node node) {
+        INSTANCE.unregisterNode(node);
+    }
+
+     private void unregisterNode(Node node) {
+        LayoutNode layoutNode = nodeRegistry.remove(node);
+        if (layoutNode != null) {
+            // Remove from dirty sets
+            dirtyNodes.remove(layoutNode);
+        }
+    }
     
     private void registerNode(Stage stage, Node node, LayoutCallback callback) {
         LayoutNode layoutNode = new LayoutNode(node, stage, callback);
