@@ -86,8 +86,8 @@ public class BufferedButton extends Button {
     }
     
     public void enablePressedEffects(){
-        setOnMousePressed((pressedEvent) -> m_imgBufView.applyBrightnessEffect(ON_MOUSE_PRESSED_EFFECT_ID, DEFAULT_DARKEN_AMOUNT));
-        setOnMouseReleased((pressedEvent) -> m_imgBufView.removeEffect(ON_MOUSE_PRESSED_EFFECT_ID));
+        setOnMousePressed((_) -> m_imgBufView.applyBrightnessEffect(ON_MOUSE_PRESSED_EFFECT_ID, DEFAULT_DARKEN_AMOUNT));
+        setOnMouseReleased((_) -> m_imgBufView.removeEffect(ON_MOUSE_PRESSED_EFFECT_ID));
         m_isPressedEffects = true;
     }
 

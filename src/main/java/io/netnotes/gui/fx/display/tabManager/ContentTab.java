@@ -64,10 +64,10 @@ public class ContentTab {
         tabBox.getChildren().addAll(titleLabel, tabCloseBox);
         
         // Update style when this tab is active
-        m_currentIdListener = (obs, old, newVal) -> 
+        m_currentIdListener = (_, _, newVal) -> 
             updateCurrentId(newVal != null && newVal.equals(id));
         
-        tabBox.setOnMouseClicked(e -> {
+        tabBox.setOnMouseClicked(_ -> {
             if(m_currentIdProperty != null){
                 m_currentIdProperty.set(id);
             }
@@ -76,20 +76,20 @@ public class ContentTab {
             }
         });
 
-        tabBox.onMouseEnteredProperty().addListener((mouseEvent)->{
+        tabBox.onMouseEnteredProperty().addListener((_)->{
             if(!tabCloseBox.getChildren().contains(closeBtn)){
                 tabCloseBox.getChildren().add(closeBtn);
             }
         }); 
 
-        tabBox.onMouseExitedProperty().addListener(mouseEvent->{
+        tabBox.onMouseExitedProperty().addListener(_->{
             if(tabCloseBox.getChildren().contains(closeBtn)){
                 tabCloseBox.getChildren().remove(closeBtn);
             }
         });
 
         menuItem = new KeyMenuItem(id, title);
-        menuItem.setOnAction(e->{
+        menuItem.setOnAction(_->{
             if(m_currentIdProperty != null){
                 m_currentIdProperty.set(getId());
             }

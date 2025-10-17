@@ -59,7 +59,7 @@ public class TabTopBar extends HBox {
         BufferedButton minimizeBtn = new BufferedButton(FxResourceFactory.minimizeImg, 20);
         minimizeBtn.setId("toolBtn");
         minimizeBtn.setPadding(new Insets(0, 2, 1, 2));
-        minimizeBtn.setOnAction(minEvent -> {
+        minimizeBtn.setOnAction(_ -> {
            theStage.setIconified(true);
         });
 

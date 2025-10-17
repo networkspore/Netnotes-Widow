@@ -95,7 +95,7 @@ public class SideBarButton extends VBox {
             .runAsync(() -> {
                 try {
                     Thread.sleep(FrameRateMonitor.getInstance().getRecommendedDebounceDelay());
-                    TaskUtils.noDelay(e -> {
+                    TaskUtils.noDelay(_ -> {
                         if (isExpanded) {
                             // Expanded state
                             m_button.setText(m_title);

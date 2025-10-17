@@ -41,7 +41,7 @@ public class InitializeApp extends Application {
         
          PasswordStageHelpers.enterPassword("Login - " + FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
             FxResourceFactory.logoImage256, appStage, 
-            onClose->{ shutdownNow(); }, 
+            _->{ shutdownNow(); }, 
             onEnter->{
                 Object source = onEnter.getSource();
                 if(source instanceof PassField){
@@ -75,7 +75,7 @@ public class InitializeApp extends Application {
         
         PasswordStageHelpers.enterPassword("Create Password - " + FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
             FxResourceFactory.logoImage256, appStage, 
-            onClose->{
+            _->{
                 passField.close();
                 Object passUserData = passField.getUserData();
                 if(passUserData != null && passUserData instanceof NoteBytesEphemeral){

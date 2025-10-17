@@ -106,7 +106,7 @@ public class SideBarPanel extends VBox {
         this.stage = stage;
         
         // Register the sidebar panel itself
-        DeferredLayoutManager.register(stage, this, ctx -> {
+        DeferredLayoutManager.register(stage, this, _ -> {
             if (stage.getScene() == null) {
                 return new LayoutData.Builder().build();
             }
@@ -141,7 +141,7 @@ public class SideBarPanel extends VBox {
         );
         
         // Register button container to adapt to scroll pane content width
-        DeferredLayoutManager.register(stage, buttonContainer, ctx -> {
+        DeferredLayoutManager.register(stage, buttonContainer, _ -> {
             // Calculate available width for buttons
             // Account for scrollbar when visible
             double containerWidth = availableWidth.get() - 8; // Padding adjustment
@@ -164,19 +164,19 @@ public class SideBarPanel extends VBox {
         });
         
         // Listen for scene height changes
-        stage.getScene().heightProperty().addListener((obs, old, newVal) -> {
+        stage.getScene().heightProperty().addListener((_, _, _) -> {
             DeferredLayoutManager.markDirty(this);
         });
         
         // Listen for button container height changes (for scrollbar detection)
-        buttonContainer.heightProperty().addListener((obs, old, newVal) -> {
+        buttonContainer.heightProperty().addListener((_, _, _) -> {
             DeferredLayoutManager.markDirty(buttonContainer);
             // Also update all buttons when container size changes
             updateButtonSizes();
         });
         
         // Listen for scroll pane viewport changes
-        listScroll.viewportBoundsProperty().addListener((obs, old, newVal) -> {
+        listScroll.viewportBoundsProperty().addListener((_, _, _) -> {
             DeferredLayoutManager.markDirty(buttonContainer);
             updateButtonSizes();
         });
@@ -243,7 +243,7 @@ public class SideBarPanel extends VBox {
 
         for (SideBarButton button : buttons) {
             chain = chain.thenComposeAsync(
-                ignored -> button.updateIsExpanded(isExpanded),
+                _ -> button.updateIsExpanded(isExpanded),
                 TaskUtils.getVirtualExecutor()
             );
         }
@@ -251,7 +251,7 @@ public class SideBarPanel extends VBox {
         m_currentTask = chain;
 
         // Optional: handle completion or failure cleanly
-        chain.whenCompleteAsync((r, ex) -> {
+        chain.whenCompleteAsync((_, ex) -> {
             if (ex instanceof CancellationException) {
                 System.out.println("Sidebar transition cancelled");
             } else if (ex != null) {
@@ -259,7 +259,7 @@ public class SideBarPanel extends VBox {
             } else {
                 System.out.println("Sidebar transition complete");
                 // After expansion completes, update layout
-                TaskUtils.fxDelay(e -> {
+                TaskUtils.fxDelay(_ -> {
                     if (stage != null) {
                         DeferredLayoutManager.markDirty(buttonContainer);
                         scrollHelper.refresh();

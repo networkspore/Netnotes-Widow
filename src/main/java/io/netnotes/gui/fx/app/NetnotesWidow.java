@@ -86,19 +86,19 @@ public class NetnotesWidow {
                 futures.add(app.shutdown(progressWriter));
             }
             return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-            .thenAccept(v->m_appData.shutdown(progressWriter)).thenRun(()->{
+            .thenAccept(_->m_appData.shutdown(progressWriter)).thenRun(()->{
                 m_widowApps.clear();
                 StreamUtils.safeClose(progressWriter);
-                TaskUtils.noDelay(noDelay->{
+                TaskUtils.noDelay(_->{
                     m_appStage.close();
                     // Final shutdown.
                     shutdownNow();
                 });
-            }).exceptionally(ex->{
+            }).exceptionally(_->{
                 StreamUtils.safeClose(progressWriter);
                 m_isShuttingDown = false;
                 if(force){
-                    TaskUtils.noDelay(noDelay->{
+                    TaskUtils.noDelay(_->{
                         m_appStage.close();
                         // Final shutdown.
                         shutdownNow();
@@ -162,9 +162,9 @@ public class NetnotesWidow {
             // Shutdown the app
             NoteStringArrayReadOnly path = new NoteStringArrayReadOnly(appId.copy());
     
-            return app.shutdown(progressWriter).thenCompose((v)->{
+            return app.shutdown(progressWriter).thenCompose((_)->{
                 if(deleteFiles){
-                    return getNoteFileService().deleteNoteFilePath(path, deleteFiles, progressWriter).thenApply(notePath->{
+                    return getNoteFileService().deleteNoteFilePath(path, deleteFiles, progressWriter).thenApply(_->{
                         return null;
                     });
                 }else{

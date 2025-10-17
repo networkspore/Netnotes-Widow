@@ -50,8 +50,8 @@ public class BufferedMenuButton extends MenuButton {
 
     //show();
     public void enablePressedEffects(){
-        setOnMousePressed((event) ->defaultPressedEffects());
-        setOnMouseReleased((event) -> defaultOnReleaseEffects());
+        setOnMousePressed((_) ->defaultPressedEffects());
+        setOnMouseReleased((_) -> defaultOnReleaseEffects());
         m_isPressedEffects = true;
     }
 

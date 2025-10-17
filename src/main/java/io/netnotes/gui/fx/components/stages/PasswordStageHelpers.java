@@ -66,7 +66,7 @@ public class PasswordStageHelpers {
         clickRegion.setId("transparentColor");
         clickRegion.setPrefHeight(500);
 
-        clickRegion.setOnAction(e -> {
+        clickRegion.setOnAction(_ -> {
             passwordField.requestFocus();
 
         });
@@ -88,14 +88,14 @@ public class PasswordStageHelpers {
 
         passwordField.setOnAction(enterEvent);
         Platform.runLater(()->passwordField.requestFocus());
-        passwordScene.focusOwnerProperty().addListener((obs, oldval, newval)->{
+        passwordScene.focusOwnerProperty().addListener((_, _, _)->{
             
             Platform.runLater(()->passwordField.requestFocus());
             
         });
         stage.show();
         stage.centerOnScreen();
-        stage.setOnCloseRequest((onCloseRequest)->{
+        stage.setOnCloseRequest((_)->{
             closeBtn.fire();
         });
     }
@@ -145,7 +145,7 @@ public class PasswordStageHelpers {
         clickRegion.setId("transparentColor");
         clickRegion.setPrefHeight(500);
 
-        clickRegion.setOnAction(e -> {
+        clickRegion.setOnAction(_ -> {
             passwordField.requestFocus();
 
         });
@@ -168,14 +168,14 @@ public class PasswordStageHelpers {
    
 
         Platform.runLater(()->passwordField.requestFocus());
-        passwordScene.focusOwnerProperty().addListener((obs, oldval, newval)->{
+        passwordScene.focusOwnerProperty().addListener((_, _, _)->{
             
             Platform.runLater(()->passwordField.requestFocus());
             
         });
         stage.show();
         stage.centerOnScreen();
-        stage.setOnCloseRequest((onCloseRequest)->{
+        stage.setOnCloseRequest((_)->{
             closeBtn.fire();
         });
     }

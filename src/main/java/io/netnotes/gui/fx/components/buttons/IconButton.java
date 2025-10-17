@@ -131,7 +131,7 @@ public class IconButton extends Button {
     }
 
     private void startFocusCurrent() {
-        m_focusListener = (obs, oldValue, newValue) -> setCurrent(newValue.booleanValue());
+        m_focusListener = (_, _, newValue) -> setCurrent(newValue.booleanValue());
         focusedProperty().addListener(m_focusListener);
     }
 

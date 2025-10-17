@@ -54,7 +54,7 @@ public class TabManagerStage implements TabWindow {
         stage.initStyle(javafx.stage.StageStyle.UNDECORATED);
         stage.getIcons().add(windowIcon100);
 
-        DeferredLayoutManager.registerStage(stage, ctx -> {
+        DeferredLayoutManager.registerStage(stage, _ -> {
             // Callback for stage-level positioning
             // For main window, we might not need to reposition
             return new StageLayout.Builder()
@@ -68,7 +68,7 @@ public class TabManagerStage implements TabWindow {
         m_onClose = onClose;
         // Create close button
         BufferedButton closeBtn = new BufferedButton(FxResourceFactory.closeImg,20);
-        closeBtn.setOnAction(e -> m_onClose.run());
+        closeBtn.setOnAction(_ -> m_onClose.run());
         
         // Create top bar with tab management
         topBar = new TabTopBar(smallIcon15, title, closeBtn, stage, this);
@@ -96,7 +96,7 @@ public class TabManagerStage implements TabWindow {
         // Register with DeferredLayoutManager
         setupLayoutManagement();
 
-        m_currentTabIdProperty.addListener((obs,oldval, newval)->{
+        m_currentTabIdProperty.addListener((_,_, newval)->{
             if (newval == null){
                 contentArea.getChildren().clear();
                 return;
@@ -118,7 +118,7 @@ public class TabManagerStage implements TabWindow {
     
     private void setupLayoutManagement() {
         // Register the sidebar for layout
-        DeferredLayoutManager.register(stage, sideBar, ctx -> {
+        DeferredLayoutManager.register(stage, sideBar, _ -> {
             if (scene == null) return new LayoutData.Builder().build();
             
             double sceneHeight = scene.getHeight();
@@ -130,7 +130,7 @@ public class TabManagerStage implements TabWindow {
         });
         
         // Register the content area for layout
-        DeferredLayoutManager.register(stage, contentArea, ctx -> {
+        DeferredLayoutManager.register(stage, contentArea, _ -> {
 
             if (scene == null) return new LayoutData.Builder().build();
             
@@ -150,7 +150,7 @@ public class TabManagerStage implements TabWindow {
         });
         
         // Listen for scene size changes
-        stage.getScene().widthProperty().addListener((obs, old, newVal) -> {
+        stage.getScene().widthProperty().addListener((_, _, _) -> {
             DeferredLayoutManager.markDirty(sideBar);
             DeferredLayoutManager.markDirty(contentArea);
             NoteBytesArray currentTabId = m_currentTabIdProperty.get();
@@ -163,7 +163,7 @@ public class TabManagerStage implements TabWindow {
             }
         });
         
-        stage.getScene().heightProperty().addListener((obs, old, newVal) -> {
+        stage.getScene().heightProperty().addListener((_, _, _) -> {
             DeferredLayoutManager.markDirty(sideBar);
             DeferredLayoutManager.markDirty(contentArea);
             NoteBytesArray currentTabId = m_currentTabIdProperty.get();
@@ -177,7 +177,7 @@ public class TabManagerStage implements TabWindow {
         });
         
         // Listen for sidebar expand/collapse
-        sideBar.getExpandButton().setOnAction(e -> {
+        sideBar.getExpandButton().setOnAction(_ -> {
             sideBar.toggleExpanded();
             DeferredLayoutManager.markDirty(contentArea);
             NoteBytesArray currentTabId = m_currentTabIdProperty.get();
@@ -279,7 +279,7 @@ public class TabManagerStage implements TabWindow {
 
         ContentBox appBox = tab.getAppBox();
 
-        DeferredLayoutManager.register(getStage(), appBox, ctx -> {
+        DeferredLayoutManager.register(getStage(), appBox, _ -> {
             if (m_currentTabIdProperty.get() != null && m_currentTabIdProperty.get().equals(tabId)) {
                 return new LayoutData.Builder()
                     .width(contentWidth)
@@ -291,7 +291,7 @@ public class TabManagerStage implements TabWindow {
 
         topBar.addTab(tab);
      
-        tab.onCloseBtn(e -> removeTab(tabId)); // Use closeTab
+        tab.onCloseBtn(_ -> removeTab(tabId)); // Use closeTab
       
 
         tab.setCurrentIdProperty(m_currentTabIdProperty);
@@ -605,6 +605,7 @@ public class TabManagerStage implements TabWindow {
         );
         
         Scene ghostScene = new Scene(new StackPane(ghostLabel));
+        ghostScene.setFill(null);
         ghostScene.setFill(Color.TRANSPARENT);
         ghost.setScene(ghostScene);
         ghost.setX(x);

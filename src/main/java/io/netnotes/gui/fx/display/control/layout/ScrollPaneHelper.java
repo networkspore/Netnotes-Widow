@@ -65,7 +65,7 @@ public class ScrollPaneHelper {
     
     private void registerWithLayoutManager() {
         // Register the ScrollPane viewport
-        DeferredLayoutManager.register(stage, scrollPane, ctx -> {
+        DeferredLayoutManager.register(stage, scrollPane, _ -> {
             double width = calculateWidth();
             double height = calculateHeight();
             
@@ -76,7 +76,7 @@ public class ScrollPaneHelper {
         });
         
         // Register the content region to match viewport (minus scrollbar space)
-        DeferredLayoutManager.register(stage, contentRegion, ctx -> {
+        DeferredLayoutManager.register(stage, contentRegion, _ -> {
             double width = calculateWidth() - CONTENT_WIDTH_OFFSET;
             double height = calculateHeight() - CONTENT_HEIGHT_OFFSET;
             
@@ -88,24 +88,24 @@ public class ScrollPaneHelper {
         
         // Listen for base property changes
         if (baseWidth != null) {
-            baseWidth.addListener((obs, old, newVal) -> markDirty());
+            baseWidth.addListener((_, _, _) -> markDirty());
         }
         if (baseHeight != null) {
-            baseHeight.addListener((obs, old, newVal) -> markDirty());
+            baseHeight.addListener((_, _, _) -> markDirty());
         }
         
         // Listen for offset property changes
         if (widthOffsets != null) {
             for (DoubleExpression offset : widthOffsets) {
                 if (offset != null) {
-                    offset.addListener((obs, old, newVal) -> markDirty());
+                    offset.addListener((_, _, _) -> markDirty());
                 }
             }
         }
         if (heightOffsets != null) {
             for (DoubleExpression offset : heightOffsets) {
                 if (offset != null) {
-                    offset.addListener((obs, old, newVal) -> markDirty());
+                    offset.addListener((_, _, _) -> markDirty());
                 }
             }
         }

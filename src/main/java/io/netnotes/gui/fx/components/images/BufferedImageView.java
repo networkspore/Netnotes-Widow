@@ -171,7 +171,7 @@ public class BufferedImageView extends ImageView {
                             effect.applyEffect(workingImage);
                         }
                         Image resultImage = SwingFXUtils.toFXImage(workingImage, null);
-                        TaskUtils.fxDelay((onSucceeded)->super.setImage(resultImage));
+                        TaskUtils.fxDelay((_)->super.setImage(resultImage));
                     } catch (Exception e) {
                         e.printStackTrace();
                     }

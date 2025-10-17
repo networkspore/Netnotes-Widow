@@ -63,7 +63,7 @@ public class AppManager implements NetnotesWidow.IWidowApp {
         m_sideBarButton = new SideBarButton(appIcon, APP_NAME);
         
         // Setup button action
-        m_sideBarButton.setOnAction(e -> openMainTab());
+        m_sideBarButton.setOnAction(_ -> openMainTab());
         
     }
     

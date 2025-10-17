@@ -116,7 +116,7 @@ class AppManagerBox extends ContentBox {
         
         // Register main container with DeferredLayoutManager
         DeferredLayoutManager.register(
-            m_stage, m_mainContainer, ctx -> {
+            m_stage, m_mainContainer, _ -> {
                 return new LayoutData.Builder()
                     .width(m_contentWidth.get())
                     .height(m_contentHeight.get())
@@ -125,12 +125,12 @@ class AppManagerBox extends ContentBox {
         );
         
         // Listen for content dimension changes
-        m_contentWidth.addListener((obs, old, newVal) -> {
+        m_contentWidth.addListener((_, _, _) -> {
             DeferredLayoutManager.markDirty(m_mainContainer);
             m_scrollHelper.refresh();
         });
         
-        m_contentHeight.addListener((obs, old, newVal) -> {
+        m_contentHeight.addListener((_, _, _) -> {
             DeferredLayoutManager.markDirty(m_mainContainer);
             m_scrollHelper.refresh();
         });
@@ -152,7 +152,7 @@ class AppManagerBox extends ContentBox {
         m_refreshButton = new Button("↻ Refresh");
         m_refreshButton.setStyle("-fx-background-color: #4a4a4a; -fx-text-fill: #ffffff; " +
                                 "-fx-padding: 8px 15px; -fx-background-radius: 5px;");
-        m_refreshButton.setOnAction(e -> loadAvailableApps());
+        m_refreshButton.setOnAction(_ -> loadAvailableApps());
         
         headerBox.getChildren().addAll(header, spacer, m_refreshButton);
         return headerBox;
@@ -230,12 +230,12 @@ class AppManagerBox extends ContentBox {
         Button viewDetailsBtn = new Button("View Details");
         viewDetailsBtn.setStyle("-fx-background-color: #4a90e2; -fx-text-fill: #ffffff; " +
                                 "-fx-padding: 6px 12px; -fx-background-radius: 5px;");
-        viewDetailsBtn.setOnAction(e -> showAppDetails(app));
+        viewDetailsBtn.setOnAction(_ -> showAppDetails(app));
         
         Button installBtn = new Button("Install");
         installBtn.setStyle("-fx-background-color: #5cb85c; -fx-text-fill: #ffffff; " +
                                  "-fx-padding: 6px 12px; -fx-background-radius: 5px;");
-        installBtn.setOnAction(e -> installApp(app));
+        installBtn.setOnAction(_ -> installApp(app));
         
         actionBox.getChildren().addAll(viewDetailsBtn, installBtn);
         
@@ -373,7 +373,7 @@ class AppManagerBox extends ContentBox {
         Button installBtn = new Button("Install");
         installBtn.setStyle("-fx-background-color: #5cb85c; -fx-text-fill: #ffffff; " +
                             "-fx-padding: 5px 15px; -fx-background-radius: 5px;");
-        installBtn.setOnAction(e -> installRelease(release));
+        installBtn.setOnAction(_ -> installRelease(release));
         
         box.getChildren().addAll(infoBox, installBtn);
         return box;

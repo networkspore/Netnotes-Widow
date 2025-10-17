@@ -44,7 +44,7 @@ public class DetachedTabWindow implements TabWindow {
 
         DeferredLayoutManager.registerStage(
             stage, 
-            ctx -> {
+            _ -> {
                 // Callback for stage-level positioning
                 // Could implement snapping, cascading, etc.
                 return new StageLayout.Builder()
@@ -71,7 +71,7 @@ public class DetachedTabWindow implements TabWindow {
         
         // Close button
         BufferedButton closeBtn = new BufferedButton(FxResourceFactory.closeImg, 20);
-        closeBtn.setOnAction(e -> close());
+        closeBtn.setOnAction(_ -> close());
         closeBtn.setPadding(new Insets(0, 5, 0, 3));
         closeBtn.setId("closeBtn");
         
@@ -108,7 +108,7 @@ public class DetachedTabWindow implements TabWindow {
         scene.getStylesheets().add(FxResourceFactory.DEFAULT_CSS);
         stage.setScene(scene);
 
-        m_currentTabIdProperty.addListener((obs,oldval, newval)->{
+        m_currentTabIdProperty.addListener((_, _, newval)->{
             if (newval == null){
                 contentArea.getChildren().clear();
                 return;
@@ -152,11 +152,11 @@ public class DetachedTabWindow implements TabWindow {
         tabBar.addTab(tab);
    
  
-        tab.onCloseBtn(e -> manager.removeTab(tabId)); // Use closeTab
+        tab.onCloseBtn(_ -> manager.removeTab(tabId)); // Use closeTab
         
  
 
-        DeferredLayoutManager.register(getStage(), appBox, ctx -> {
+        DeferredLayoutManager.register(getStage(), appBox, _ -> {
             if (m_currentTabIdProperty.get() != null && m_currentTabIdProperty.get().equals(tabId)) {
                 return new LayoutData.Builder()
                     .width(contentArea.getLayoutBounds().getWidth())

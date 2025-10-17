@@ -29,12 +29,12 @@ public class TopBar extends HBox {
         ColorAdjust colorAdjust = new ColorAdjust();
         colorAdjust.setBrightness(-0.5);
 
-        imageView.addEventFilter(MouseEvent.MOUSE_ENTERED, e -> {
+        imageView.addEventFilter(MouseEvent.MOUSE_ENTERED, _ -> {
 
             imageView.setEffect(colorAdjust);
 
         });
-        imageView.addEventFilter(MouseEvent.MOUSE_EXITED, e -> {
+        imageView.addEventFilter(MouseEvent.MOUSE_EXITED, _ -> {
             imageView.setEffect(null);
         });
 
@@ -77,7 +77,7 @@ public class TopBar extends HBox {
         minimizeBtn.setId("toolBtn");
         minimizeBtn.setGraphic(minimizeImage);
         minimizeBtn.setPadding(new Insets(0, 2, 1, 2));
-        minimizeBtn.setOnAction(minEvent -> {
+        minimizeBtn.setOnAction(_ -> {
             theStage.setIconified(true);
         });
 
@@ -153,7 +153,7 @@ public class TopBar extends HBox {
         minimizeBtn.setId("toolBtn");
         minimizeBtn.setGraphic(minimizeImage);
         minimizeBtn.setPadding(new Insets(0, 2, 1, 2));
-        minimizeBtn.setOnAction(minEvent -> {
+        minimizeBtn.setOnAction(_ -> {
             theStage.setIconified(true);
         });
 
@@ -223,7 +223,7 @@ public class TopBar extends HBox {
         minimizeBtn.setId("toolBtn");
         minimizeBtn.setGraphic(minimizeImage);
         minimizeBtn.setPadding(new Insets(0, 2, 1, 2));
-        minimizeBtn.setOnAction(minEvent -> {
+        minimizeBtn.setOnAction(_ -> {
             theStage.setIconified(true);
         });
 
@@ -291,7 +291,7 @@ public class TopBar extends HBox {
         minimizeBtn.setId("toolBtn");
         minimizeBtn.setGraphic(minimizeImage);
         minimizeBtn.setPadding(new Insets(0, 2, 1, 2));
-        minimizeBtn.setOnAction(minEvent -> {
+        minimizeBtn.setOnAction(_ -> {
             theStage.setIconified(true);
         });
 
@@ -357,7 +357,7 @@ public class TopBar extends HBox {
         minimizeBtn.setId("toolBtn");
         minimizeBtn.setGraphic(minimizeImage);
         minimizeBtn.setPadding(new Insets(0, 2, 1, 2));
-        minimizeBtn.setOnAction(minEvent -> {
+        minimizeBtn.setOnAction(_ -> {
             theStage.setIconified(true);
         });
 
@@ -420,7 +420,7 @@ public class TopBar extends HBox {
         minimizeBtn.setId("toolBtn");
         minimizeBtn.setGraphic(minimizeImage);
         minimizeBtn.setPadding(new Insets(0, 2, 1, 2));
-        minimizeBtn.setOnAction(minEvent -> {
+        minimizeBtn.setOnAction(_ -> {
             theStage.setIconified(true);
         });
         

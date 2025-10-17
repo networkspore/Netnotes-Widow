@@ -26,7 +26,7 @@ public class PassField extends TextField implements AutoCloseable {
         super();
         setEditable(false);
         setFocusTraversable(true);
-        focusedProperty().addListener((obs, wasFocused, isNowFocused) -> {
+        focusedProperty().addListener((_, _, _) -> {
             updateDisplay();
         });
         

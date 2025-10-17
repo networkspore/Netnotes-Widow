@@ -77,7 +77,7 @@ public class DeferredLayoutManager {
         }
         
         // Auto-cleanup when stage closes
-        stage.setOnHiding(e -> {
+        stage.setOnHiding(_ -> {
             stageNodes.remove(stage);
             // Clean up any nodes registered to this stage
             nodeRegistry.entrySet().removeIf(entry -> entry.getValue().getStage() == stage);
@@ -188,7 +188,7 @@ public class DeferredLayoutManager {
             
             // Schedule new layout - delay is automatically adaptive via TaskUtils
             if (useAdaptiveDelay) {
-                scheduledLayout = TaskUtils.fxDelay(event -> performLayout());
+                scheduledLayout = TaskUtils.fxDelay(_ -> performLayout());
             } else {
             
                 if (timeSinceLastLayout < 100) {
@@ -202,7 +202,7 @@ public class DeferredLayoutManager {
                     layoutDelay = TaskUtils.DEFAULT_FX_DELAY; // default when not under pressure
                 }
                 
-                scheduledLayout = TaskUtils.fxDelay(layoutDelay, event -> performLayout());
+                scheduledLayout = TaskUtils.fxDelay(layoutDelay, _ -> performLayout());
             }
         }
     }
@@ -309,7 +309,7 @@ public class DeferredLayoutManager {
     private Map<Stage, List<LayoutNode>> groupByStage(Set<LayoutNode> nodes) {
         Map<Stage, List<LayoutNode>> grouped = new HashMap<>();
         for (LayoutNode node : nodes) {
-            grouped.computeIfAbsent(node.getStage(), k -> new ArrayList<>())
+            grouped.computeIfAbsent(node.getStage(), _ -> new ArrayList<>())
                    .add(node);
         }
         return grouped;

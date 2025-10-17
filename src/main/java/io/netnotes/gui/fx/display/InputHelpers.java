@@ -40,7 +40,7 @@ public class InputHelpers {
     }
 
     public static ChangeListener<String> createFieldEnterBtnAddListener(TextField textField, HBox textFieldBox, Button enterBtn){
-        ChangeListener<String> changeListener = (obs, oldval, newval) ->{
+        ChangeListener<String> changeListener = (_, _, newval) ->{
             if(textField != null && textFieldBox != null && enterBtn != null){
                 if(newval.length() > 0){
                     if(!textFieldBox.getChildren().contains(enterBtn)){
@@ -140,7 +140,7 @@ public class InputHelpers {
                         + region.getLayoutBounds().getWidth(),
                 (p.getY() + scene.getY()
                         + window.getY()) - 30);
-        pt.setOnFinished(e->tooltip.hide());
+        pt.setOnFinished(_->tooltip.hide());
         pt.playFromStart();
     }
 

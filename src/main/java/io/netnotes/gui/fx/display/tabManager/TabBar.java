@@ -124,7 +124,7 @@ public class TabBar extends HBox {
     public void addTab(ContentTab tab) {
         if (tab == null) return;
 
-        TaskUtils.noDelay(noDelay -> {
+        TaskUtils.noDelay(_ -> {
             // Add visual tab to the HBox
             HBox tabBox = tab.getTabBox();
             if (!tabsBox.getChildren().contains(tabBox)) {
@@ -146,7 +146,7 @@ public class TabBar extends HBox {
         ContentTab tab = manager.getTab(tabId);
         if (tab == null) return null;
         
-        TaskUtils.noDelay(noDelay -> {
+        TaskUtils.noDelay(_ -> {
             // Remove visual tab
             tabsBox.getChildren().remove(tab.getTabBox());
             
@@ -210,7 +210,7 @@ public class TabBar extends HBox {
                     System.currentTimeMillis(), 
                     KeyMenuItem.VALUE_NOT_KEY
                 );
-                closeAllItem.setOnAction(e -> {
+                closeAllItem.setOnAction(_ -> {
                     closeAllTabsInWindow();
                 });
                 tabsMenuButton.getItems().add(separatorMenuItem);
