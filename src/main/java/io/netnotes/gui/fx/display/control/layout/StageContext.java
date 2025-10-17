@@ -11,7 +11,7 @@ import javafx.stage.Stage;
 /**
  * Context provided to stage layout callbacks
  */
-class StageContext {
+public class StageContext {
     private final Map<Stage, StageNode> allStages;
     private final Stage currentStage;
     

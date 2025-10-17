@@ -4,7 +4,7 @@ package io.netnotes.gui.fx.display.control.layout;
 /**
  * Data returned from stage layout calculation
  */
-class StageLayout {
+public class StageLayout {
     private final double x, y, width, height;
     
     private StageLayout(Builder builder) {

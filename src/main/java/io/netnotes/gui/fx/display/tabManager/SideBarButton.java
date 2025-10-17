@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components.stages.tabManager;
+package io.netnotes.gui.fx.display.tabManager;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;

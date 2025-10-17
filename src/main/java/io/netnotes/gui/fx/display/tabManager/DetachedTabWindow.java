@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components.stages.tabManager;
+package io.netnotes.gui.fx.display.tabManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -8,6 +8,7 @@ import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
 import io.netnotes.gui.fx.display.control.layout.LayoutData;
+import io.netnotes.gui.fx.display.control.layout.StageLayout;
 import javafx.beans.binding.DoubleExpression;
 import javafx.beans.property.SimpleDoubleProperty;
 import javafx.beans.property.SimpleObjectProperty;
@@ -40,6 +41,21 @@ public class DetachedTabWindow implements TabWindow {
         stage.initStyle(StageStyle.UNDECORATED);
         stage.setX(x);
         stage.setY(y);
+
+        DeferredLayoutManager.registerStage(
+            stage, 
+            ctx -> {
+                // Callback for stage-level positioning
+                // Could implement snapping, cascading, etc.
+                return new StageLayout.Builder()
+                    .x(stage.getX())
+                    .y(stage.getY())
+                    .width(stage.getWidth())
+                    .height(stage.getHeight())
+                    .build();
+            },
+            manager.getStage()  // Optional: Dependency on main stage
+        );
         
         // Top bar container
         topBar = new HBox(5);
@@ -172,7 +188,7 @@ public class DetachedTabWindow implements TabWindow {
                 setCurrentTab(remainingTabs.get(0).getId());
             }
         }
-        
+
         ContentBox appBox = tab.getAppBox();
         DeferredLayoutManager.unregister(appBox);
 

@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components.stages.tabManager;
+package io.netnotes.gui.fx.display.tabManager;
 
 import javafx.scene.layout.VBox;
 import javafx.scene.layout.HBox;

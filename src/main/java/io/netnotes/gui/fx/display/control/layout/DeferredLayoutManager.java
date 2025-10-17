@@ -94,15 +94,37 @@ public class DeferredLayoutManager {
         INSTANCE.unregisterNode(node);
     }
 
-     private void unregisterNode(Node node) {
+    private void unregisterNode(Node node) {
         LayoutNode layoutNode = nodeRegistry.remove(node);
         if (layoutNode != null) {
             // Remove from dirty sets
             dirtyNodes.remove(layoutNode);
+            
+            // Remove from parent's children list
+            LayoutNode parent = layoutNode.getParent();
+            if (parent != null) {
+                parent.getChildren().remove(layoutNode);
+            }
+            
+            // Note: We don't recursively unregister children because
+            // in typical usage, children will be unregistered separately
         }
     }
-    
+        
     private void registerNode(Stage stage, Node node, LayoutCallback callback) {
+       
+        // Auto-unregister if already registered (cleans up old relationships)
+        LayoutNode existingNode = nodeRegistry.get(node);
+        if (existingNode != null) {
+            // Clean up old registration
+            LayoutNode oldParent = existingNode.getParent();
+            if (oldParent != null) {
+                oldParent.getChildren().remove(existingNode);
+            }
+            dirtyNodes.remove(existingNode);
+        }
+        
+        // Create new registration
         LayoutNode layoutNode = new LayoutNode(node, stage, callback);
         nodeRegistry.put(node, layoutNode);
         
@@ -115,7 +137,6 @@ public class DeferredLayoutManager {
                 parentLayoutNode.addChild(layoutNode);
                 break;
             }
-            // Keep looking up the tree for a registered parent
             parentNode = parentNode.getParent();
         }
     }

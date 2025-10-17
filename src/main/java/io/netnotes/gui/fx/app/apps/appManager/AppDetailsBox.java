@@ -2,7 +2,7 @@ package io.netnotes.gui.fx.app.apps.appManager;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.gui.fx.app.apps.AppInformation;
-import io.netnotes.gui.fx.components.stages.tabManager.ContentBox;
+import io.netnotes.gui.fx.display.tabManager.ContentBox;
 
 /**
  * Detailed view for a specific app.

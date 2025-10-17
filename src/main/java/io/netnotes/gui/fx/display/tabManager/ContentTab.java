@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components.stages.tabManager;
+package io.netnotes.gui.fx.display.tabManager;
 
 import javafx.scene.layout.HBox;
 import javafx.stage.Stage;
@@ -10,7 +10,6 @@ import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
-import io.netnotes.engine.noteBytes.NoteString;
 import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.components.menus.KeyMenuItem;
 import io.netnotes.gui.fx.display.FxResourceFactory;
@@ -25,6 +24,7 @@ public class ContentTab {
     private final HBox tabBox;
     private final Button closeBtn;
     private final Label titleLabel;
+    private final KeyMenuItem menuItem;
 
     private SimpleObjectProperty<NoteBytesArray> m_currentIdProperty = null;
     private ChangeListener<NoteBytesArray> m_currentIdListener;
@@ -32,6 +32,8 @@ public class ContentTab {
     private EventHandler<ActionEvent> onTabClickHandler;
     
     private TabWindow parentWindow = null;
+
+    
 
     public ContentTab(NoteBytesArray id, NoteBytes parentId, String title, ContentBox content, TabWindow initialWindow) {
         this.id = id;
@@ -86,6 +88,14 @@ public class ContentTab {
             }
         });
 
+        menuItem = new KeyMenuItem(id, title);
+        menuItem.setOnAction(e->{
+            if(m_currentIdProperty != null){
+                m_currentIdProperty.set(getId());
+            }
+        });
+
+
        
     }
 
@@ -104,16 +114,22 @@ public class ContentTab {
         if(m_currentIdProperty != null){
             m_currentIdProperty.addListener(m_currentIdListener);
         }
-       
+    }
+
+    public boolean isCurrent(){
+        return  m_currentIdProperty != null && 
+                m_currentIdProperty.get() != null &&
+                m_currentIdProperty.get().equals(getId());
     }
 
     public void updateCurrentId(){
-        updateCurrentId(m_currentIdProperty != null && m_currentIdProperty.get() != null ? m_currentIdProperty.get().equals(id) :false);
+        updateCurrentId(isCurrent());
     }
 
-    public void updateCurrentId(boolean current){
-        titleLabel.setId(current ? "tabLabelSelected" : "tabLabel");
-        tabBox.setId(current ? "tabBtnSelected" : "tabBtn");
+    private void updateCurrentId(boolean isCurrent){
+        titleLabel.setId(isCurrent ? "tabLabelSelected" : "tabLabel");
+        tabBox.setId(isCurrent ? "tabBtnSelected" : "tabBtn");
+        menuItem.setId(isCurrent ? "selectedMenuItem" : "tabMenuItem");
     }
 
      // Location management
@@ -134,23 +150,7 @@ public class ContentTab {
     }
 
     public KeyMenuItem getMenuItem() {
-        KeyMenuItem menuItem = new KeyMenuItem(id, new NoteString(title), System.currentTimeMillis(), KeyMenuItem.VALUE_NOT_KEY);
-        Runnable updateTabCss = ()->{
-            NoteBytesArray currentId = getParentWindow().currentIdProperty().get();
-            if(currentId != null && currentId.equals(getId())){
-                menuItem.setId("selectedMenuItem");
-            }else{
-                menuItem.setId("tabMenuItem");
-            }
-        };
-        menuItem.setOnAction(e->{
-            if(m_currentIdProperty != null){
-                m_currentIdProperty.set(getId());
-            }
-        });
-
-        getParentWindow().currentIdProperty().addListener((obs,oldVal,newVal)->updateTabCss.run());
-        updateTabCss.run();
+        
         return menuItem;
     }
     public NoteBytesArray getId() { return id; }

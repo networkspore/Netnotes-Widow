@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components.stages.tabManager;
+package io.netnotes.gui.fx.display.tabManager;
 
 import io.netnotes.engine.noteBytes.NoteBytesArray;
 import javafx.beans.property.SimpleObjectProperty;

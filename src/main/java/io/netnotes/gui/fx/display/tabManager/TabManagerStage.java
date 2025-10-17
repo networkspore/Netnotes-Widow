@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components.stages.tabManager;
+package io.netnotes.gui.fx.display.tabManager;
 
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.scene.Scene;
@@ -24,6 +24,7 @@ import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
 import io.netnotes.gui.fx.display.control.layout.LayoutData;
+import io.netnotes.gui.fx.display.control.layout.StageLayout;
 
 public class TabManagerStage implements TabWindow {
     private final static double DEFAULT_WIDTH = 1000;
@@ -47,11 +48,23 @@ public class TabManagerStage implements TabWindow {
     
     public TabManagerStage(Stage stage, String title, Image smallIcon15, Image windowIcon100, Runnable onClose) {
         this.stage = stage;
-    
+        
         // Setup stage
         stage.setTitle(title);
         stage.initStyle(javafx.stage.StageStyle.UNDECORATED);
         stage.getIcons().add(windowIcon100);
+
+        DeferredLayoutManager.registerStage(stage, ctx -> {
+            // Callback for stage-level positioning
+            // For main window, we might not need to reposition
+            return new StageLayout.Builder()
+                .x(stage.getX())
+                .y(stage.getY())
+                .width(stage.getWidth())
+                .height(stage.getHeight())
+                .build();
+        });
+
         m_onClose = onClose;
         // Create close button
         BufferedButton closeBtn = new BufferedButton(FxResourceFactory.closeImg,20);

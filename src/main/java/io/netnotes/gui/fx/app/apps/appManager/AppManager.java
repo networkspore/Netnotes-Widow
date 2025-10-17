@@ -12,9 +12,9 @@ import io.netnotes.engine.noteBytes.NoteBytesReadOnly;
 import io.netnotes.engine.noteBytes.processing.AsyncNoteBytesWriter;
 import io.netnotes.engine.utils.github.GitHubInfo;
 import io.netnotes.gui.fx.app.NetnotesWidow;
-import io.netnotes.gui.fx.components.stages.tabManager.ContentBox;
-import io.netnotes.gui.fx.components.stages.tabManager.SideBarButton;
 import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.gui.fx.display.tabManager.ContentBox;
+import io.netnotes.gui.fx.display.tabManager.SideBarButton;
 import javafx.scene.image.Image;
 
 /**

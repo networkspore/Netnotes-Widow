@@ -26,6 +26,10 @@ public class KeyMenuItem extends MenuItem implements KeyInterface{
 
     private String m_style = KEY_AND_VALUE;
 
+    public KeyMenuItem(NoteBytes key, String value){
+        this(key, new NoteBytes(value), System.currentTimeMillis(), VALUE_NOT_KEY);
+    }
+
     public KeyMenuItem(NoteBytes key, NoteBytes value, long timeStamp, String style){
         this(key, value, timeStamp, DEFAULT_COL_SIZE, style);
     }
