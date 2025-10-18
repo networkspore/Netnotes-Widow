@@ -1,61 +1,96 @@
 package io.netnotes.gui.fx.components.fields;
 
 import java.nio.charset.StandardCharsets;
+import java.util.function.Consumer;
 
 import io.netnotes.engine.noteBytes.NoteBytesEphemeral;
 import io.netnotes.gui.fx.components.notifications.Alerts;
 import io.netnotes.gui.fx.display.FxResourceFactory;
+import javafx.animation.KeyFrame;
+import javafx.animation.Timeline;
 import javafx.scene.control.ButtonType;
-import javafx.scene.control.TextField;
+import javafx.scene.control.Label;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
+import javafx.util.Duration;
 
-public class PassField extends TextField implements AutoCloseable {
+public class PassField extends Label implements AutoCloseable {
     public static final int MAX_PASSWORD_BYTE_LENGTH = 256;
     public static final int MAX_KEYSTROKE_COUNT = 128;
     public static final String FOCUSED_CHAR = "▮";
     public static final String UNFOCUSED_CHAR = "▯";
 
-    private NoteBytesEphemeral passwordBytes = new NoteBytesEphemeral(new byte[MAX_PASSWORD_BYTE_LENGTH]);
-    private byte[] keystrokeLengths = new byte[MAX_KEYSTROKE_COUNT];
-    private int currentLength = 0; // Total bytes used
-    private int keystrokeCount = 0; // Number of keystrokes
-    private Runnable onEscapeRunnable = null;
-    
+    private final Timeline blinkTimeline;
+
+    private NoteBytesEphemeral m_passwordBytes = new NoteBytesEphemeral(new byte[MAX_PASSWORD_BYTE_LENGTH]);
+    private byte[] m_keystrokeLengths = new byte[MAX_KEYSTROKE_COUNT];
+    private int m_currentLength = 0; // Total bytes used
+    private int m_keystrokeCount = 0; // Number of keystrokes
+    private Runnable m_onEscapeRunnable = null;
+    private Consumer<PassField> m_onAction = null;
+    private boolean m_cursorVisible = true;
+
     public PassField() {
         super();
-        setEditable(false);
         setFocusTraversable(true);
         focusedProperty().addListener((_, _, _) -> {
             updateDisplay();
         });
-        
+
         // Handle control keys (backspace, navigation, etc.)
         setOnKeyPressed(this::handleControlKeys);
         // Handle actual character input
         setOnKeyTyped(this::handleCharacterInput);
         
         updateDisplay();
+
+        blinkTimeline = new Timeline(
+                new KeyFrame(Duration.millis(FxResourceFactory.CURSOR_DELAY), _ -> toggleCursor()));
+        blinkTimeline.setCycleCount(Timeline.INDEFINITE);
+
+         // focus control
+        focusedProperty().addListener((_, _, isNowFocused) -> {
+            if (isNowFocused) {
+                blinkTimeline.play();
+            } else {
+                blinkTimeline.stop();
+                setText(UNFOCUSED_CHAR);
+            }
+        });
+    }
+
+    private void toggleCursor() {
+        if (isFocused()) {
+            m_cursorVisible = !m_cursorVisible;
+            updateDisplay();
+        }else if(!m_cursorVisible){
+            m_cursorVisible = true;
+            updateDisplay();
+        }
     }
     
     private void handleControlKeys(KeyEvent event) {
         KeyCode keyCode = event.getCode();
-        
-        if (keyCode == KeyCode.BACK_SPACE) {
-            if (keystrokeCount > 0) {
+    
+
+        blinkTimeline.playFromStart();
+        if(keyCode == KeyCode.ENTER){
+            fire();
+        }if (keyCode == KeyCode.BACK_SPACE) {
+            if (m_keystrokeCount > 0) {
                 // Get the length of the last keystroke
-                keystrokeCount--;
-                int lastKeystrokeLength = keystrokeLengths[keystrokeCount];
+                m_keystrokeCount--;
+                int lastKeystrokeLength = m_keystrokeLengths[m_keystrokeCount];
                 
                 // Zero out the bytes of the last keystroke
                 for (int i = 0; i < lastKeystrokeLength; i++) {
-                    passwordBytes.get()[currentLength - lastKeystrokeLength + i] = 0;
+                    m_passwordBytes.get()[m_currentLength - lastKeystrokeLength + i] = 0;
                 }
                 
-                currentLength -= lastKeystrokeLength;
-                keystrokeLengths[keystrokeCount] = 0;
+                m_currentLength -= lastKeystrokeLength;
+                m_keystrokeLengths[m_keystrokeCount] = 0;
             }
-            updateDisplay();
+       
             event.consume();
         } else if (keyCode == KeyCode.ESCAPE) {
             escape();
@@ -71,6 +106,14 @@ public class PassField extends TextField implements AutoCloseable {
         } else if (isModifierKey(keyCode) || isNavigationKey(keyCode) || isSystemKey(keyCode)) {
             // Consume but don't record these keys
             event.consume();
+        }
+        m_cursorVisible = true;
+        updateDisplay();
+    }
+
+    public void fire(){
+        if(m_onAction != null){
+            m_onAction.accept(this);
         }
     }
     
@@ -88,7 +131,7 @@ public class PassField extends TextField implements AutoCloseable {
         byte[] charBytes = character.getBytes(StandardCharsets.UTF_8);
         
         // Check if we have room for this keystroke
-        if (keystrokeCount >= MAX_KEYSTROKE_COUNT) {
+        if (m_keystrokeCount >= MAX_KEYSTROKE_COUNT) {
             Alerts.showAndWaitErrorAlert("Input Limit Reached", "Password cannot exceed " + MAX_KEYSTROKE_COUNT + " keystrokes.",
                 getScene().getWindow(), ButtonType.OK);
          
@@ -96,7 +139,7 @@ public class PassField extends TextField implements AutoCloseable {
             return;
         }
         
-        if (currentLength + charBytes.length > MAX_PASSWORD_BYTE_LENGTH) {
+        if (m_currentLength + charBytes.length > MAX_PASSWORD_BYTE_LENGTH) {
             Alerts.showAndWaitErrorAlert("Input Limit Reached", "Password size " + MAX_PASSWORD_BYTE_LENGTH + " reached.",
                 getScene().getWindow(), ButtonType.OK);
             event.consume();
@@ -104,13 +147,17 @@ public class PassField extends TextField implements AutoCloseable {
         }
         
         // Store the character bytes
-        System.arraycopy(charBytes, 0, passwordBytes.get(), currentLength, charBytes.length);
-        keystrokeLengths[keystrokeCount] = (byte) charBytes.length;
-        currentLength += charBytes.length;
-        keystrokeCount++;
+        System.arraycopy(charBytes, 0, m_passwordBytes.get(), m_currentLength, charBytes.length);
+        m_keystrokeLengths[m_keystrokeCount] = (byte) charBytes.length;
+        m_currentLength += charBytes.length;
+        m_keystrokeCount++;
         
         updateDisplay();
         event.consume();
+    }
+
+    public void setOnAction(Consumer<PassField> actionConsumer){
+        m_onAction = actionConsumer;
     }
 
     public void escape(){
@@ -118,19 +165,19 @@ public class PassField extends TextField implements AutoCloseable {
         clearInput();
         updateDisplay();
       
-        if(onEscapeRunnable != null){
-            onEscapeRunnable.run();
+        if(m_onEscapeRunnable != null){
+            m_onEscapeRunnable.run();
         }
     }
     
     private void clearInput() {
-        passwordBytes.close();
+        m_passwordBytes.close();
         // Clear keystroke lengths
-        for (int i = 0; i < keystrokeCount; i++) {
-            keystrokeLengths[i] = 0;
+        for (int i = 0; i < m_keystrokeCount; i++) {
+            m_keystrokeLengths[i] = 0;
         }
-        currentLength = 0;
-        keystrokeCount = 0;
+        m_currentLength = 0;
+        m_keystrokeCount = 0;
     }
     
     private boolean isModifierKey(KeyCode keyCode) {
@@ -167,21 +214,25 @@ public class PassField extends TextField implements AutoCloseable {
     }
     
     private void updateDisplay() {
-        if (isFocused()) {
-            setText(String.valueOf(FOCUSED_CHAR));
+        if (!isFocused()) {
+            setText(UNFOCUSED_CHAR);
+            return;
+        }
+        if (m_cursorVisible) {
+            setText(FOCUSED_CHAR);
         } else {
-            setText(String.valueOf(UNFOCUSED_CHAR));
+            setText(" "); // blank when off
         }
     }
     
     public NoteBytesEphemeral getEphemeralPassword() {
-        return passwordBytes.copyOf(currentLength);
+        return m_passwordBytes.copyOf(m_currentLength);
     }
 
    
 
     public void setOnEscape(Runnable onEscape){
-        onEscapeRunnable = onEscape;
+        m_onEscapeRunnable = onEscape;
     }
     
     // Method to clear the password

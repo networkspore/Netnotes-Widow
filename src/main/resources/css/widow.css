@@ -90,7 +90,7 @@
 .scroll-bar:horizontal .decrement-button {
     -fx-background-color: transparent;
     -fx-background-radius: 0.0em;
-    -fx-padding: 0.0 0.0 2.0 0.0;/
+    -fx-padding: 0.0 0.0 2.0 0.0;
 }
 .scroll-bar:vertical .increment-button,
 .scroll-bar:vertical .decrement-button {
@@ -868,9 +868,10 @@
 
 #passField {
     -fx-font-family: 'OpenSansEmoji, Regular';
-    -fx-font-size: 12px;
+    -fx-font-size: 14px;
     -fx-background-color: transparent;
     -fx-text-fill: white;
+    -fx-padding: 0 5 4 5;
 }
 #largeField {
     -fx-background-color: transparent;
@@ -1318,7 +1319,6 @@
 #startImageBtn {
     -fx-background-color: transparent;
     -fx-text-fill: white;
-    -fx-background-radius: 30px;
     -fx-font-family: 'OCR A Extended';
     -fx-font-size: 25;
     -fx-opacity: 1;

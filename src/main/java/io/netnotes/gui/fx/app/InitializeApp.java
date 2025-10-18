@@ -39,27 +39,21 @@ public class InitializeApp extends Application {
 
     private void login(Stage appStage){
         
-         PasswordStageHelpers.enterPassword("Login - " + FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
+         PasswordStageHelpers.enterPassword("Login",FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
             FxResourceFactory.logoImage256, appStage, 
             _->{ shutdownNow(); }, 
-            onEnter->{
-                Object source = onEnter.getSource();
-                if(source instanceof PassField){
-               
-                    try(
-                        PassField passField = (PassField) source;
-                        NoteBytesEphemeral password = passField.getEphemeralPassword();
-                    ){
-                        SettingsData settingsData = SettingsData.readSettings(password);
-                        startWidow(appStage, settingsData);
-                    }catch (InvalidPasswordException e) {
-                        
-                    } catch (InvalidKeySpecException | NoSuchAlgorithmException | IOException e) {
-                        Alerts.showAndWaitErrorAlert("Fatal Error",  "Settings data is inaccessible:\n\t\t" + e.toString(), 
-                            appStage,ButtonType.CLOSE);
-                        shutdownNow();
-                    }
+            passField->{
+                try(
+                    NoteBytesEphemeral password = passField.getEphemeralPassword();
+                ){
+                    SettingsData settingsData = SettingsData.readSettings(password);
+                    startWidow(appStage, settingsData);
+                }catch (InvalidPasswordException e) {
                     
+                } catch (InvalidKeySpecException | NoSuchAlgorithmException | IOException e) {
+                    Alerts.showAndWaitErrorAlert("Fatal Error",  "Settings data is inaccessible:\n\t\t" + e.toString(), 
+                        appStage,ButtonType.CLOSE);
+                    shutdownNow();
                 }
             }
         );
@@ -73,7 +67,7 @@ public class InitializeApp extends Application {
         final Text passText = new Text(createPassString);
 
         
-        PasswordStageHelpers.enterPassword("Create Password - " + FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
+        PasswordStageHelpers.createPassword("Create Password",FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
             FxResourceFactory.logoImage256, appStage, 
             _->{
                 passField.close();
@@ -86,7 +80,7 @@ public class InitializeApp extends Application {
                 shutdownNow();
         }, passText, passField);
 
-        passField.setOnAction(e->{
+        passField.setOnAction(_->{
             try(NoteBytesEphemeral password = passField.getEphemeralPassword()){
                 if(passText.getText().equals(createPassString)){
                     passField.setUserData(password.copy());
@@ -104,7 +98,7 @@ public class InitializeApp extends Application {
                                 settingsData = SettingsData.createSettings(password);
                             }catch(Exception failed){
                                 Alerts.showAndWaitErrorAlert("Fatal Error", "Failed to create password:\n\t\t" 
-                                    + e.toString(), appStage,ButtonType.CLOSE);
+                                    + failed.toString(), appStage,ButtonType.CLOSE);
                                 shutdownNow();
                             }
                             if(settingsData != null){

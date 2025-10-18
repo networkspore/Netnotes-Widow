@@ -1,5 +1,7 @@
 package io.netnotes.gui.fx.components.stages;
 
+import java.util.function.Consumer;
+
 import io.netnotes.gui.fx.components.fields.PassField;
 import io.netnotes.gui.fx.components.hboxes.TopBar;
 import io.netnotes.gui.fx.display.FxResourceFactory;
@@ -21,8 +23,8 @@ import javafx.stage.StageStyle;
 import javafx.event.EventHandler;
 
 public class PasswordStageHelpers {
-    public static void enterPassword(String title,Image smallIcon15, Image windowIcon100, Stage stage, 
-        EventHandler<ActionEvent> closeEvent, EventHandler<ActionEvent> enterEvent)
+    public static void enterPassword(String heading, String title,Image smallIcon15, Image windowIcon100, Stage stage, 
+        EventHandler<ActionEvent> closeEvent, Consumer<PassField> enterEvent)
     {
         stage.setTitle(title);
         stage.setResizable(false);
@@ -33,19 +35,21 @@ public class PasswordStageHelpers {
         Button closeBtn = new Button();
         TopBar titleBox = new TopBar(smallIcon15, title, closeBtn, stage);
 
-    
-        ImageView btnImageView = new ImageView(windowIcon100);
+    ImageView btnImageView = new ImageView(windowIcon100);
         btnImageView.setFitHeight(100);
         btnImageView.setPreserveRatio(true);
 
-        Button imageButton = new Button(title);
+        Button imageButton = new Button(heading);
         imageButton.setGraphic(btnImageView);
         imageButton.setId("startImageBtn");
         imageButton.setFont(FxResourceFactory.mainFont);
         imageButton.setContentDisplay(ContentDisplay.TOP);
+        imageButton.setGraphicTextGap(20);
+
 
         HBox imageBox = new HBox(imageButton);
         imageBox.setAlignment(Pos.CENTER);
+
 
         Text passwordTxt = new Text("Enter password:");
         passwordTxt.setFill(FxResourceFactory.txtColor);
@@ -59,26 +63,15 @@ public class PasswordStageHelpers {
 
         HBox passwordBox = new HBox(passwordTxt, passwordField);
         passwordBox.setAlignment(Pos.CENTER_LEFT);
-        passwordBox.setPadding(new Insets(20, 0, 0, 0));
-
-        Button clickRegion = new Button();
-        clickRegion.setPrefWidth(Double.MAX_VALUE);
-        clickRegion.setId("transparentColor");
-        clickRegion.setPrefHeight(500);
-
-        clickRegion.setOnAction(_ -> {
-            passwordField.requestFocus();
-
-        });
-
         VBox.setMargin(passwordBox, new Insets(5, 10, 0, 20));
 
-        VBox layoutVBox = new VBox(titleBox, imageBox, passwordBox, clickRegion);
+        VBox layoutVBox = new VBox(titleBox, imageBox, passwordBox);
         VBox.setVgrow(layoutVBox, Priority.ALWAYS);
 
         Scene passwordScene = new Scene(layoutVBox, FxResourceFactory.STAGE_WIDTH, FxResourceFactory.STAGE_HEIGHT);
         passwordScene.setFill(null);
         passwordScene.getStylesheets().add(FxResourceFactory.DEFAULT_CSS);
+       
         stage.setScene(passwordScene);
 
 
@@ -101,10 +94,10 @@ public class PasswordStageHelpers {
     }
 
 
-   public static void enterPassword(String title,Image smallIcon15, Image windowIcon100, Stage stage, 
+   public static void createPassword(String heading, String title,Image smallIcon15, Image windowIcon100, Stage stage, 
         EventHandler<ActionEvent> closeEvent, Text passwordTxt, PassField passwordField)
     {
-        stage.setTitle(title);
+        stage.setTitle(heading +" - " + title);
         stage.setResizable(false);
         stage.initStyle(StageStyle.UNDECORATED);
         stage.getIcons().add(windowIcon100);
@@ -118,11 +111,13 @@ public class PasswordStageHelpers {
         btnImageView.setFitHeight(100);
         btnImageView.setPreserveRatio(true);
 
-        Button imageButton = new Button(title);
+        Button imageButton = new Button(heading);
         imageButton.setGraphic(btnImageView);
         imageButton.setId("startImageBtn");
         imageButton.setFont(FxResourceFactory.mainFont);
         imageButton.setContentDisplay(ContentDisplay.TOP);
+        imageButton.setGraphicTextGap(20);
+
 
         HBox imageBox = new HBox(imageButton);
         imageBox.setAlignment(Pos.CENTER);
@@ -138,7 +133,7 @@ public class PasswordStageHelpers {
 
         HBox passwordBox = new HBox(passwordTxt, passwordField);
         passwordBox.setAlignment(Pos.CENTER_LEFT);
-        passwordBox.setPadding(new Insets(20, 0, 0, 0));
+        passwordBox.setPadding(new Insets(0, 0, 0, 0));
 
         Button clickRegion = new Button();
         clickRegion.setPrefWidth(Double.MAX_VALUE);
@@ -156,16 +151,9 @@ public class PasswordStageHelpers {
         VBox.setVgrow(layoutVBox, Priority.ALWAYS);
 
         Scene passwordScene = new Scene(layoutVBox, FxResourceFactory.STAGE_WIDTH, FxResourceFactory.STAGE_HEIGHT);
-        passwordScene.setFill(null);
         passwordScene.getStylesheets().add(FxResourceFactory.DEFAULT_CSS);
         stage.setScene(passwordScene);
-
-
         closeBtn.setOnAction(closeEvent);
-
-        
-  
-   
 
         Platform.runLater(()->passwordField.requestFocus());
         passwordScene.focusOwnerProperty().addListener((_, _, _)->{
