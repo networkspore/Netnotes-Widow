@@ -2,6 +2,7 @@ package io.netnotes.gui.fx.components.fields;
 
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.geometry.Insets;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
@@ -10,8 +11,11 @@ import javafx.util.Duration;
 import io.netnotes.engine.noteBytes.NoteIntegerArray;
 import io.netnotes.gui.fx.components.images.BufferedCanvasView;
 import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.gui.fx.display.InputHelpers;
+import io.netnotes.gui.fx.display.FontMetricsCache;
 
 import java.awt.*;
+import java.math.BigDecimal;
 import java.text.DecimalFormat;
 import java.util.function.Function;
 
@@ -22,7 +26,6 @@ import java.util.function.Function;
 public class BufferedTextField extends BufferedCanvasView {
     private static final int DEFAULT_WIDTH = 400;
     private static final int DEFAULT_HEIGHT = 40;
-    private static final int PADDING = 8;
     
     public enum TextPosition {
         LEFT, CENTER, RIGHT
@@ -39,6 +42,7 @@ public class BufferedTextField extends BufferedCanvasView {
     
     // Viewport for horizontal scrolling
     private int m_viewportOffset = 0; // Code point offset
+    private int m_scrollOffset = 0; // Pixel offset for CENTER/RIGHT alignment
     
     // Visual state
     private boolean m_cursorVisible = true;
@@ -54,7 +58,9 @@ public class BufferedTextField extends BufferedCanvasView {
     private Color m_selectionColor = new Color(59, 130, 246); // Blue
     private Color m_selectedTextColor = Color.WHITE;
     private TextPosition m_textPosition = TextPosition.LEFT;
-    
+    private Insets m_insets = new Insets(0);
+    private int m_margin = 20;
+   
     // Placeholder
     private String m_placeholderText = "";
     private Color m_placeholderTextColor = new Color(150, 150, 150); // Gray
@@ -67,7 +73,7 @@ public class BufferedTextField extends BufferedCanvasView {
     private TextValidator m_validator = null;
     private InputMask m_inputMask = null;
     
-    // Cached font metrics (reused for performance)
+    // Cached font metrics (from global cache)
     private FontMetrics m_cachedFontMetrics = null;
     
     // ========== Functional Interfaces ==========
@@ -84,6 +90,7 @@ public class BufferedTextField extends BufferedCanvasView {
         private String m_pattern;
         private DecimalFormat m_decimalFormat;
         private int m_maxLength = -1;
+        private int m_decimalPlaces = -1;
         private Function<String, String> m_formatter;
         
         private InputMask(String pattern) {
@@ -104,6 +111,7 @@ public class BufferedTextField extends BufferedCanvasView {
             }
             mask.m_decimalFormat = new DecimalFormat(pattern.toString());
             mask.m_maxLength = maxDigitsBeforeDecimal + (decimalPlaces > 0 ? decimalPlaces + 1 : 0);
+            mask.m_decimalPlaces = decimalPlaces;
             return mask;
         }
         
@@ -121,6 +129,7 @@ public class BufferedTextField extends BufferedCanvasView {
             }
             mask.m_decimalFormat = new DecimalFormat(pattern.toString());
             mask.m_maxLength = maxDigitsBeforeDecimal + (decimalPlaces > 0 ? decimalPlaces + 1 : 0);
+            mask.m_decimalPlaces = decimalPlaces;
             return mask;
         }
         
@@ -137,13 +146,16 @@ public class BufferedTextField extends BufferedCanvasView {
             }
             
             if (m_decimalFormat != null) {
-                // Remove non-digit characters except decimal point
-                String cleaned = input.replaceAll("[^\\d.]", "");
-                if (cleaned.isEmpty()) {
+                // Use InputHelpers for proper number formatting
+                String cleaned = InputHelpers.formatStringToNumber(input, 
+                    m_decimalPlaces >= 0 ? m_decimalPlaces : 10);
+                
+                if (cleaned.isEmpty() || InputHelpers.isTextZero(cleaned)) {
                     return "";
                 }
+                
                 try {
-                    double value = Double.parseDouble(cleaned);
+                    BigDecimal value = new BigDecimal(cleaned);
                     return m_decimalFormat.format(value);
                 } catch (NumberFormatException e) {
                     return input;
@@ -159,7 +171,7 @@ public class BufferedTextField extends BufferedCanvasView {
             }
             
             if (m_decimalFormat != null) {
-                // Allow digits and decimal point
+                // Allow digits, decimal point, and handle partial input
                 return input.matches("[\\d.]*");
             }
             
@@ -185,6 +197,22 @@ public class BufferedTextField extends BufferedCanvasView {
         m_fieldHeight = height;
         requestRender();
     }
+
+    public Insets getInsets(){
+        return m_insets;
+    }
+
+    public void setInsets(Insets insets){
+        m_insets = insets;
+    }
+
+    public int getMargin(){
+        return m_margin;
+    }
+
+    public void setMargin(int margin){
+        m_margin = margin;
+    }
     
     // ========== BufferedCanvasView Implementation ==========
     
@@ -200,10 +228,9 @@ public class BufferedTextField extends BufferedCanvasView {
     
     @Override
     protected void drawContent(Graphics2D g2d, int width, int height) {
-        // Cache font metrics if not already cached
+        // Cache font metrics from global cache
         if (m_cachedFontMetrics == null) {
-            g2d.setFont(m_font);
-            m_cachedFontMetrics = g2d.getFontMetrics();
+            m_cachedFontMetrics = FontMetricsCache.getInstance().getMetrics(m_font);
         }
         
         // Update viewport to keep cursor visible
@@ -217,31 +244,46 @@ public class BufferedTextField extends BufferedCanvasView {
         // Set font
         g2d.setFont(m_font);
         
-        int textY = (height + m_cachedFontMetrics.getAscent() - 
+        // Get padding from CSS insets
+        Insets insets = getInsets();
+        int paddingLeft = (int) insets.getLeft();
+        int paddingRight = (int) insets.getRight();
+        int paddingTop = (int) insets.getTop();
+        int paddingBottom = (int) insets.getBottom();
+        
+        int availableWidth = width - paddingLeft - paddingRight;
+        int availableHeight = height - paddingTop - paddingBottom;
+        
+        int textY = paddingTop + (availableHeight + m_cachedFontMetrics.getAscent() - 
                      m_cachedFontMetrics.getDescent()) / 2;
         
         // Draw placeholder or text
         if (m_text.isEmpty() && !m_isFocused && !m_placeholderText.isEmpty()) {
-            drawPlaceholder(g2d, textY, width);
+            drawPlaceholder(g2d, textY, paddingLeft, availableWidth);
         } else if (!m_text.isEmpty()) {
-            drawTextWithSelection(g2d, textY, width);
+            drawTextWithSelection(g2d, textY, paddingLeft, availableWidth, paddingTop, availableHeight);
         }
         
-        // Draw cursor if focused and visible
-        if (m_isFocused && m_cursorVisible && isCursorInViewport() && m_selectionStart == -1) {
-            drawCursor(g2d, textY, width, height);
+        // Draw cursor if focused and visible (but not when selecting)
+        if (m_isFocused && m_cursorVisible && !hasSelection() && isCursorInViewport()) {
+            drawCursor(g2d, textY, paddingLeft, availableWidth, paddingTop, availableHeight);
         }
     }
     
-    private void drawPlaceholder(Graphics2D g2d, int textY, int width) {
+    private void drawPlaceholder(Graphics2D g2d, int textY, int paddingLeft, int availableWidth) {
         g2d.setColor(m_placeholderTextColor);
-        int x = getTextX(m_placeholderText, width);
+        int x = getTextX(m_placeholderText, paddingLeft, availableWidth);
         g2d.drawString(m_placeholderText, x, textY);
     }
     
-    private void drawTextWithSelection(Graphics2D g2d, int textY, int width) {
+    private void drawTextWithSelection(Graphics2D g2d, int textY, int paddingLeft, 
+                                       int availableWidth, int paddingTop, int availableHeight) {
         String visibleText = getVisibleText();
-        int textX = getTextX(visibleText, width);
+        int textX = getTextX(visibleText, paddingLeft, availableWidth);
+        
+        // Set clipping to prevent drawing outside available area
+        Shape oldClip = g2d.getClip();
+        g2d.setClip(paddingLeft, paddingTop, availableWidth, availableHeight);
         
         if (hasSelection() && isSelectionInViewport()) {
             // Draw text in three parts: before selection, selection, after selection
@@ -256,16 +298,16 @@ public class BufferedTextField extends BufferedCanvasView {
                 String beforeSel = m_text.substring(visibleStart, selStart).toString();
                 g2d.setColor(m_textColor);
                 g2d.drawString(beforeSel, textX, textY);
-                textX += m_cachedFontMetrics.stringWidth(beforeSel);
+                textX += getStringWidth(beforeSel);
             }
             
             // Selection
             String selectedText = m_text.substring(selStart, selEnd).toString();
-            int selectionWidth = m_cachedFontMetrics.stringWidth(selectedText);
+            int selectionWidth = getStringWidth(selectedText);
             
             // Draw selection background
             g2d.setColor(m_selectionColor);
-            g2d.fillRect(textX, PADDING, selectionWidth, m_fieldHeight - PADDING * 2);
+            g2d.fillRect(textX, paddingTop, selectionWidth, availableHeight);
             
             // Draw selected text
             g2d.setColor(m_selectedTextColor);
@@ -283,37 +325,57 @@ public class BufferedTextField extends BufferedCanvasView {
             g2d.setColor(m_textColor);
             g2d.drawString(visibleText, textX, textY);
         }
+        
+        // Restore original clip
+        g2d.setClip(oldClip);
     }
     
-    private void drawCursor(Graphics2D g2d, int textY, int width, int height) {
+    private void drawCursor(Graphics2D g2d, int textY, int paddingLeft, int availableWidth,
+                           int paddingTop, int availableHeight) {
         int visualCursorPos = m_cursorPosition - m_viewportOffset;
         String textBeforeCursor = m_text.substring(
             m_viewportOffset, m_viewportOffset + visualCursorPos).toString();
         
         String visibleText = getVisibleText();
-        int baseX = getTextX(visibleText, width);
-        int cursorX = baseX + m_cachedFontMetrics.stringWidth(textBeforeCursor);
+        int baseX = getTextX(visibleText, paddingLeft, availableWidth);
+        int cursorX = baseX + getStringWidth(textBeforeCursor);
         
         g2d.setColor(m_cursorColor);
-        g2d.fillRect(cursorX, PADDING, 2, height - PADDING * 2);
+        g2d.fillRect(cursorX, paddingTop, 2, availableHeight);
     }
     
     /**
      * Get X position based on text alignment
      */
-    private int getTextX(String text, int width) {
-        int textWidth = m_cachedFontMetrics.stringWidth(text);
-        int availableWidth = width - (PADDING * 2);
+    private int getTextX(String text, int paddingLeft, int availableWidth) {
+        int textWidth = getStringWidth(text);
         
         switch (m_textPosition) {
             case CENTER:
-                return PADDING + Math.max(0, (availableWidth - textWidth) / 2);
+                return paddingLeft + Math.max(0, (availableWidth - textWidth) / 2) - m_scrollOffset;
             case RIGHT:
-                return PADDING + Math.max(0, availableWidth - textWidth);
+                return paddingLeft + Math.max(0, availableWidth - textWidth) - m_scrollOffset;
             case LEFT:
             default:
-                return PADDING;
+                return paddingLeft;
         }
+    }
+    
+    // ========== String Width Calculation ==========
+    
+    /**
+     * Get string width using global font metrics cache.
+     * Properly handles surrogate pairs (emoji outside BMP).
+     */
+    private int getStringWidth(String str) {
+        return FontMetricsCache.getInstance().getStringWidth(m_font, str);
+    }
+    
+    /**
+     * Get precise string width for variable-width fonts
+     */
+    private double getStringWidthPrecise(String str) {
+        return FontMetricsCache.getInstance().getStringWidthPrecise(m_font, str);
     }
     
     // ========== Selection Management ==========
@@ -353,34 +415,76 @@ public class BufferedTextField extends BufferedCanvasView {
     private void updateViewport() {
         if (m_text.length() == 0) {
             m_viewportOffset = 0;
+            m_scrollOffset = 0;
             return;
         }
         
-        // For center/right alignment, we need different viewport logic
-        if (m_textPosition != TextPosition.LEFT) {
-            m_viewportOffset = 0; // Show all text for center/right
-            return;
-        }
+        Insets insets = getInsets();
+        int paddingLeft = (int) insets.getLeft();
+        int paddingRight = (int) insets.getRight();
+        int availableWidth = m_fieldWidth - paddingLeft - paddingRight;
         
-        int availableWidth = m_fieldWidth - (PADDING * 2);
-        
-        // If cursor is before viewport, scroll left
-        if (m_cursorPosition < m_viewportOffset) {
-            m_viewportOffset = m_cursorPosition;
-            return;
-        }
-        
-        // Check if cursor is beyond visible area, scroll right
-        while (m_cursorPosition > m_viewportOffset) {
-            String textToCursor = m_text.substring(
-                m_viewportOffset, m_cursorPosition).toString();
-            int textWidth = m_cachedFontMetrics.stringWidth(textToCursor);
+        // LEFT alignment - traditional scrolling
+        if (m_textPosition == TextPosition.LEFT) {
+            m_scrollOffset = 0;
             
-            if (textWidth <= availableWidth - 4) {
-                break;
+            // If cursor is before viewport, scroll left
+            if (m_cursorPosition < m_viewportOffset) {
+                m_viewportOffset = m_cursorPosition;
+                return;
             }
             
-            m_viewportOffset++;
+            // Check if cursor is beyond visible area, scroll right
+            while (m_cursorPosition > m_viewportOffset) {
+                String textToCursor = m_text.substring(
+                    m_viewportOffset, m_cursorPosition).toString();
+                int textWidth = getStringWidth(textToCursor);
+                
+                if (textWidth <= availableWidth - 4) {
+                    break;
+                }
+                
+                m_viewportOffset++;
+            }
+        } 
+        // CENTER/RIGHT alignment - pixel-based scrolling
+        else {
+            m_viewportOffset = 0;
+            String fullText = m_text.toString();
+            int fullWidth = getStringWidth(fullText);
+            
+            // If text fits, center/right align naturally (no scroll needed)
+            if (fullWidth <= availableWidth) {
+                m_scrollOffset = 0;
+                return;
+            }
+            
+            // Calculate cursor position in pixels
+            String textBeforeCursor = m_text.substring(0, m_cursorPosition).toString();
+            int cursorPixelPos = getStringWidth(textBeforeCursor);
+            
+            // Calculate where cursor would appear with current scroll
+            int displayPos = 0;
+            if (m_textPosition == TextPosition.CENTER) {
+                displayPos = (availableWidth - fullWidth) / 2 + cursorPixelPos - m_scrollOffset;
+            } else { // RIGHT
+                displayPos = availableWidth - fullWidth + cursorPixelPos - m_scrollOffset;
+            }
+            
+            // Adjust scroll to keep cursor visible with some margin
+            int margin = m_margin;
+            if (displayPos < margin) {
+                m_scrollOffset += (displayPos - margin);
+            } else if (displayPos > availableWidth - margin) {
+                m_scrollOffset += (displayPos - availableWidth + margin);
+            }
+            
+            // Constrain scroll offset to valid range
+            // Min: Allow scrolling right until the end of text aligns with right edge
+            int minScroll = fullWidth - availableWidth;
+            // Max: Allow scrolling left until start of text is visible
+            int maxScroll = 0;
+            m_scrollOffset = Math.max(minScroll, Math.min(maxScroll, m_scrollOffset));
         }
     }
     
@@ -389,23 +493,31 @@ public class BufferedTextField extends BufferedCanvasView {
             return "";
         }
         
-        // For center/right alignment with short text, show everything
+        Insets insets = getInsets();
+        int paddingLeft = (int) insets.getLeft();
+        int paddingRight = (int) insets.getRight();
+        int availableWidth = m_fieldWidth - paddingLeft - paddingRight;
+        
+        // For CENTER/RIGHT with scrolling, show all text
+        if (m_textPosition != TextPosition.LEFT && m_scrollOffset > 0) {
+            return m_text.toString();
+        }
+        
+        // For LEFT or CENTER/RIGHT without scrolling
         if (m_textPosition != TextPosition.LEFT) {
             String fullText = m_text.toString();
-            int fullWidth = m_cachedFontMetrics.stringWidth(fullText);
-            int availableWidth = m_fieldWidth - (PADDING * 2);
+            int fullWidth = getStringWidth(fullText);
             
             if (fullWidth <= availableWidth) {
                 return fullText;
             }
         }
         
-        int availableWidth = m_fieldWidth - (PADDING * 2);
         int endPos = m_viewportOffset;
         
         while (endPos < m_text.length()) {
             String chunk = m_text.substring(m_viewportOffset, endPos + 1).toString();
-            int width = m_cachedFontMetrics.stringWidth(chunk);
+            int width = getStringWidth(chunk);
             
             if (width > availableWidth) {
                 break;
@@ -417,12 +529,16 @@ public class BufferedTextField extends BufferedCanvasView {
     }
     
     private boolean isCursorInViewport() {
-        int availableWidth = m_fieldWidth - (PADDING * 2);
+        Insets insets = getInsets();
+        int paddingLeft = (int) insets.getLeft();
+        int paddingRight = (int) insets.getRight();
+        int availableWidth = m_fieldWidth - paddingLeft - paddingRight;
+        
         int endPos = m_viewportOffset;
         
         while (endPos < m_text.length()) {
             String chunk = m_text.substring(m_viewportOffset, endPos + 1).toString();
-            int width = m_cachedFontMetrics.stringWidth(chunk);
+            int width = getStringWidth(chunk);
             if (width > availableWidth) break;
             endPos++;
         }
@@ -558,7 +674,9 @@ public class BufferedTextField extends BufferedCanvasView {
     private void handleMousePressed(MouseEvent event) {
         requestFocus();
         
-        double x = event.getX() - PADDING;
+        Insets insets = getInsets();
+        int paddingLeft = (int) insets.getLeft();
+        double x = event.getX() - paddingLeft;
         int clickedPos = estimateCursorPosition(x);
         
         m_cursorPosition = clickedPos;
@@ -572,7 +690,9 @@ public class BufferedTextField extends BufferedCanvasView {
     
     private void handleMouseDragged(MouseEvent event) {
         if (m_isSelecting) {
-            double x = event.getX() - PADDING;
+            Insets insets = getInsets();
+            int paddingLeft = (int) insets.getLeft();
+            double x = event.getX() - paddingLeft;
             int dragPos = estimateCursorPosition(x);
             
             m_cursorPosition = dragPos;
@@ -613,15 +733,17 @@ public class BufferedTextField extends BufferedCanvasView {
     // ========== Text Operations ==========
     
     private void insertAtCursor(String str) {
-        // Validate input
+        // Build test text
         String testText = m_text.substring(0, m_cursorPosition).toString() 
                         + str 
                         + m_text.substring(m_cursorPosition).toString();
         
+        // Validate with validator
         if (m_validator != null && !m_validator.validate(testText)) {
             return;
         }
         
+        // Validate with input mask
         if (m_inputMask != null && !m_inputMask.isValidInput(str)) {
             return;
         }
@@ -638,11 +760,39 @@ public class BufferedTextField extends BufferedCanvasView {
     }
     
     private void applyInputMask() {
-        String formatted = m_inputMask.format(m_text.toString());
-        if (!formatted.equals(m_text.toString())) {
-            int oldCursor = m_cursorPosition;
+        String original = m_text.toString();
+        String formatted = m_inputMask.format(original);
+        
+        if (!formatted.equals(original)) {
+            // Track cursor position relative to content changes
+            // Get the text before cursor in original
+            String beforeCursorOriginal = m_text.substring(0, 
+                Math.min(m_cursorPosition, original.length())).toString();
+            
+            // Count significant characters (digits) before cursor
+            int digitsBeforeCursor = 0;
+            for (int i = 0; i < beforeCursorOriginal.length(); i++) {
+                char c = beforeCursorOriginal.charAt(i);
+                if (Character.isDigit(c)) {
+                    digitsBeforeCursor++;
+                }
+            }
+            
+            // Update text
             m_text = new NoteIntegerArray(formatted);
-            m_cursorPosition = Math.min(oldCursor, m_text.length());
+            
+            // Find new cursor position by counting same number of digits
+            int newCursorPos = 0;
+            int digitsFound = 0;
+            for (int i = 0; i < formatted.length() && digitsFound < digitsBeforeCursor; i++) {
+                char c = formatted.charAt(i);
+                if (Character.isDigit(c)) {
+                    digitsFound++;
+                }
+                newCursorPos = i + 1;
+            }
+            
+            m_cursorPosition = Math.min(newCursorPos, m_text.length());
         }
     }
     
@@ -680,8 +830,13 @@ public class BufferedTextField extends BufferedCanvasView {
             return m_viewportOffset;
         }
         
+        Insets insets = getInsets();
+        int paddingLeft = (int) insets.getLeft();
+        int paddingRight = (int) insets.getRight();
+        int availableWidth = m_fieldWidth - paddingLeft - paddingRight;
+        
         String visibleText = getVisibleText();
-        int baseX = getTextX(visibleText, m_fieldWidth);
+        int baseX = getTextX(visibleText, paddingLeft, availableWidth);
         double relativeX = x - baseX;
         
         int closestPos = m_viewportOffset;
@@ -689,13 +844,18 @@ public class BufferedTextField extends BufferedCanvasView {
         
         int visibleLength = visibleText.codePointCount(0, visibleText.length());
         
+        // Use getStringBounds for better precision with variable-width fonts
         for (int i = 0; i <= visibleLength; i++) {
             int absolutePos = m_viewportOffset + i;
             if (absolutePos > m_text.length()) break;
             
             String textBeforePos = m_text.substring(
                 m_viewportOffset, absolutePos).toString();
-            double textWidth = m_cachedFontMetrics.stringWidth(textBeforePos);
+            
+            // Use precise measurement for cursor positioning
+            double textWidth = textBeforePos.isEmpty() ? 0 : 
+                getStringWidthPrecise(textBeforePos);
+            
             double dist = Math.abs(relativeX - textWidth);
             
             if (dist < closestDist) {
@@ -717,6 +877,7 @@ public class BufferedTextField extends BufferedCanvasView {
         m_text = new NoteIntegerArray(newText);
         m_cursorPosition = m_text.length();
         m_viewportOffset = 0;
+        m_scrollOffset = 0;
         clearSelection();
         requestRender();
     }
@@ -725,6 +886,7 @@ public class BufferedTextField extends BufferedCanvasView {
         m_text.clear();
         m_cursorPosition = 0;
         m_viewportOffset = 0;
+        m_scrollOffset = 0;
         clearSelection();
         requestRender();
     }
@@ -742,6 +904,40 @@ public class BufferedTextField extends BufferedCanvasView {
         return "";
     }
     
+    /**
+     * Get text as BigDecimal using InputHelpers
+     */
+    public BigDecimal getTextAsBigDecimal(int decimals) {
+        String text = getText();
+        if (text.isEmpty() || InputHelpers.isTextZero(text)) {
+            return BigDecimal.ZERO;
+        }
+        
+        String formatted = InputHelpers.formatStringToNumber(text, decimals);
+        try {
+            return new BigDecimal(formatted);
+        } catch (NumberFormatException e) {
+            return BigDecimal.ZERO;
+        }
+    }
+    
+    /**
+     * Get text as int using InputHelpers
+     */
+    public int getTextAsInt() {
+        String text = getText();
+        if (text.isEmpty() || InputHelpers.isTextZero(text)) {
+            return 0;
+        }
+        
+        String formatted = InputHelpers.formatStringToNumber(text, 0);
+        try {
+            return Integer.parseInt(formatted);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+    
     // ========== Configuration ==========
     
     public void setFieldWidth(int width) {
@@ -756,7 +952,7 @@ public class BufferedTextField extends BufferedCanvasView {
     
     public void setFont(Font font) {
         m_font = font;
-        m_cachedFontMetrics = null;
+        m_cachedFontMetrics = null; // Will be refreshed from global cache on next render
         requestRender();
     }
     
@@ -767,6 +963,8 @@ public class BufferedTextField extends BufferedCanvasView {
     
     public void setTextPosition(TextPosition position) {
         m_textPosition = position;
+        m_viewportOffset = 0;
+        m_scrollOffset = 0;
         requestRender();
     }
     
@@ -790,6 +988,11 @@ public class BufferedTextField extends BufferedCanvasView {
         requestRender();
     }
     
+    public void setCursorColor(Color color) {
+        m_cursorColor = color;
+        requestRender();
+    }
+    
     public void setValidator(TextValidator validator) {
         m_validator = validator;
     }
@@ -798,14 +1001,86 @@ public class BufferedTextField extends BufferedCanvasView {
         m_inputMask = mask;
     }
     
+    public TextPosition getTextPosition() {
+        return m_textPosition;
+    }
+    
+    public Font getFont() {
+        return m_font;
+    }
+    
+    // ========== Validators (Static Helpers) ==========
+    
+    /**
+     * Create a numeric-only validator
+     */
+    public static TextValidator numericValidator() {
+        return text -> text.matches("[0-9]*");
+    }
+    
+    /**
+     * Create a decimal validator using InputHelpers
+     */
+    public static TextValidator decimalValidator(int maxDecimals) {
+        return text -> {
+            if (text.isEmpty()) return true;
+            
+            // Allow partial input like ".", "0.", etc.
+            if (text.equals(".") || text.endsWith(".")) {
+                return text.chars().filter(ch -> ch == '.').count() == 1;
+            }
+            
+            String formatted = InputHelpers.formatStringToNumber(text, maxDecimals);
+            return formatted.equals(text);
+        };
+    }
+    
+    /**
+     * Create a max length validator
+     */
+    public static TextValidator maxLengthValidator(int maxLength) {
+        return text -> text.length() <= maxLength;
+    }
+    
+    /**
+     * Create a regex pattern validator
+     */
+    public static TextValidator patternValidator(String regex) {
+        return text -> text.matches(regex);
+    }
+    
+    /**
+     * Combine multiple validators
+     */
+    public static TextValidator combineValidators(TextValidator... validators) {
+        return text -> {
+            for (TextValidator validator : validators) {
+                if (!validator.validate(text)) {
+                    return false;
+                }
+            }
+            return true;
+        };
+    }
+    
     // ========== Cleanup ==========
     
     @Override
     public void shutdown() {
+        // Stop cursor timeline
         if (m_cursorTimeline != null) {
             m_cursorTimeline.stop();
+            m_cursorTimeline = null;
         }
+        
+        // Clear cached references (global cache handles actual font metrics)
         m_cachedFontMetrics = null;
+        
+        // Clear references
+        m_text = null;
+        m_validator = null;
+        m_inputMask = null;
+        
         super.shutdown();
     }
 }

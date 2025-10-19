@@ -28,7 +28,7 @@ public class InputHelpers {
     }
 
     public static BigDecimal getBigDecimalFromField(TextField field, int decimals){
-        return field == null ? BigDecimal.ZERO : isTextZero(field.getText()) ? BigDecimal.ZERO :  new BigDecimal(formatStringToNumber(field.getText(), 0));
+        return field == null ? BigDecimal.ZERO : isTextZero(field.getText()) ? BigDecimal.ZERO :  new BigDecimal(formatStringToNumber(field.getText(), decimals));
     }
 
     public static String formatStringLineLength(String str, int len){

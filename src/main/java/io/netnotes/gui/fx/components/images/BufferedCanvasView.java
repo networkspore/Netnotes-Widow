@@ -19,6 +19,7 @@ import java.util.Iterator;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -105,16 +106,16 @@ public abstract class BufferedCanvasView extends Canvas {
     protected void drawContent(Graphics2D g2d, int width, int height) {
         // Default: no-op
     }
-    
+
     // ========== Render Pipeline ==========
     
     public void updateImage() {
-
+        
         Runnable newTask = () -> {
             try {
                 BufferedImage baseImage = generateBaseImage();
                 if (baseImage == null) {
-                    TaskUtils.fxDelay(_ -> clearCanvas());
+                    TaskUtils.noDelay(_ -> clearCanvas());
                     return;
                 }
 
