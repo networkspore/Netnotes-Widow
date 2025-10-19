@@ -11,6 +11,7 @@ import io.netnotes.gui.fx.components.fields.PassField;
 import io.netnotes.gui.fx.components.notifications.Alerts;
 import io.netnotes.gui.fx.components.stages.PasswordStageHelpers;
 import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.logging.Log;
 import javafx.application.Application;
 import javafx.application.HostServices;
 import javafx.application.Platform;
@@ -93,6 +94,7 @@ public class InitializeApp extends Application {
                             ? (NoteBytesEphemeral) passUserData : null;
                     ){
                         if(firstPassword != null && password.equals(firstPassword)){
+                           
                             SettingsData settingsData = null;
                             try{
                                 settingsData = SettingsData.createSettings(password);

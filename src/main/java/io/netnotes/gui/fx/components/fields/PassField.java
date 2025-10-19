@@ -18,9 +18,12 @@ public class PassField extends Label implements AutoCloseable {
     public static final int MAX_PASSWORD_BYTE_LENGTH = 256;
     public static final int MAX_KEYSTROKE_COUNT = 128;
     public static final String FOCUSED_CHAR = "▮";
-    public static final String UNFOCUSED_CHAR = "▯";
+    public static final String UNFOCUSED_CHAR = " ";
 
-    private final Timeline blinkTimeline;
+    public String m_focusedChar = FOCUSED_CHAR;
+    public String m_unfocusedChar = UNFOCUSED_CHAR;
+
+    private final Timeline m_cursorDelayTimeline;
 
     private NoteBytesEphemeral m_passwordBytes = new NoteBytesEphemeral(new byte[MAX_PASSWORD_BYTE_LENGTH]);
     private byte[] m_keystrokeLengths = new byte[MAX_KEYSTROKE_COUNT];
@@ -44,17 +47,17 @@ public class PassField extends Label implements AutoCloseable {
         
         updateDisplay();
 
-        blinkTimeline = new Timeline(
+        m_cursorDelayTimeline = new Timeline(
                 new KeyFrame(Duration.millis(FxResourceFactory.CURSOR_DELAY), _ -> toggleCursor()));
-        blinkTimeline.setCycleCount(Timeline.INDEFINITE);
+        m_cursorDelayTimeline.setCycleCount(Timeline.INDEFINITE);
 
          // focus control
         focusedProperty().addListener((_, _, isNowFocused) -> {
             if (isNowFocused) {
-                blinkTimeline.play();
+                m_cursorDelayTimeline.play();
             } else {
-                blinkTimeline.stop();
-                setText(UNFOCUSED_CHAR);
+                m_cursorDelayTimeline.stop();
+                setText(m_unfocusedChar);
             }
         });
     }
@@ -73,7 +76,7 @@ public class PassField extends Label implements AutoCloseable {
         KeyCode keyCode = event.getCode();
     
 
-        blinkTimeline.playFromStart();
+        m_cursorDelayTimeline.playFromStart();
         if(keyCode == KeyCode.ENTER){
             fire();
         }if (keyCode == KeyCode.BACK_SPACE) {
@@ -160,6 +163,24 @@ public class PassField extends Label implements AutoCloseable {
         m_onAction = actionConsumer;
     }
 
+     public String getFocusedChar() {
+        return m_focusedChar;
+    }
+
+    public void setFocusedChar(String focusedChar) {
+        this.m_focusedChar = focusedChar;
+    }
+
+    public String getUnfocusedChar() {
+        return m_unfocusedChar;
+    }
+
+    public void setUnfocusedChar(String unfocusedChar) {
+        this.m_unfocusedChar = unfocusedChar;
+    }
+
+
+
     public void escape(){
         // Clear all input
         clearInput();
@@ -215,11 +236,11 @@ public class PassField extends Label implements AutoCloseable {
     
     private void updateDisplay() {
         if (!isFocused()) {
-            setText(UNFOCUSED_CHAR);
+            setText(m_unfocusedChar);
             return;
         }
         if (m_cursorVisible) {
-            setText(FOCUSED_CHAR);
+            setText(m_focusedChar);
         } else {
             setText(" "); // blank when off
         }

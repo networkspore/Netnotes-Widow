@@ -170,7 +170,8 @@ public class ScalingUtils {
      * Scale image using specified algorithm with quality control
      */
     public static BufferedImage scaleImage(BufferedImage src, int targetWidth, int targetHeight, 
-                                        io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm algorithm) {
+        ScalingAlgorithm algorithm
+    ) {
         if (src == null || targetWidth <= 0 || targetHeight <= 0) {
             throw new IllegalArgumentException("Invalid source image or dimensions");
         }

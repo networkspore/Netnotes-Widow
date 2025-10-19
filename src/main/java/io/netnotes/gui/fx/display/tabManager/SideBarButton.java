@@ -2,14 +2,14 @@ package io.netnotes.gui.fx.display.tabManager;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
-
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 
 import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.control.FrameRateMonitor;
 import io.netnotes.gui.fx.utils.TaskUtils;
-
+import javafx.animation.Timeline;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
@@ -24,10 +24,10 @@ import javafx.scene.layout.Region;
 public class SideBarButton extends VBox {
     private final BufferedButton m_button;
     private final String m_title;
-    private boolean m_isExpanded = false;
+    private AtomicBoolean m_isExpanded = new AtomicBoolean(false);
     private Node m_content;
     private boolean m_isInitialized = false;
-    private Consumer<Boolean> m_onExpandedChanged;
+    private BiConsumer<Boolean, AtomicBoolean> m_onExpandedChanged;
 
     public SideBarButton(Image appIcon, String name){
         super();
@@ -68,10 +68,10 @@ public class SideBarButton extends VBox {
         m_button.setOnAction(onAction);
     }
 
-    public void setContent(Node content){
+    public void setContent(Node content, AtomicBoolean isCancelled, Timeline panelTimeline){
         m_content = content;
         if(m_isInitialized){
-            updateIsExpanded(m_isExpanded);
+            updateIsExpanded(m_isExpanded.get(),isCancelled, panelTimeline);
         }
     }
 
@@ -83,71 +83,60 @@ public class SideBarButton extends VBox {
         return m_isInitialized;
     }
 
-    public void setOnExpandedChanged(Consumer<Boolean> onExpandedChanged){
+    public void setOnExpandedChanged(BiConsumer<Boolean, AtomicBoolean> onExpandedChanged){
         m_onExpandedChanged = onExpandedChanged;
     }
 
-    public CompletableFuture<Void> updateIsExpanded(boolean isExpanded) {
+    public CompletableFuture<Void> updateIsExpanded(boolean isExpanded, AtomicBoolean cancel, Timeline panelTimeline) {
         m_isInitialized = true;
-        m_isExpanded = isExpanded;
+        m_isExpanded.set(isExpanded);
 
-        CompletableFuture<Void> task = CompletableFuture
-            .runAsync(() -> {
-                try {
-                    Thread.sleep(FrameRateMonitor.getInstance().getRecommendedDebounceDelay());
-                    TaskUtils.noDelay(_ -> {
-                        if (isExpanded) {
-                            // Expanded state
-                            m_button.setText(m_title);
-                           
-                            m_button.setContentDisplay(ContentDisplay.LEFT);
-                            
-                            // Let parent container control width
-                            this.setPrefWidth(Region.USE_COMPUTED_SIZE);
-                            this.setMinWidth(SideBarPanel.DEFAULT_LARGE_WIDTH - 10);
-                            this.setMaxWidth(Double.MAX_VALUE);
-                            
-                            // Clear fixed height
-                            this.setPrefHeight(Region.USE_COMPUTED_SIZE);
-                            this.setMinHeight(Region.USE_PREF_SIZE);
-                            this.setMaxHeight(Double.MAX_VALUE);
-                            
-                            m_button.setPrefHeight(Region.USE_COMPUTED_SIZE);
-                            m_button.setMinHeight(SideBarPanel.DEFAULT_SMALL_WIDTH);
-                            
-                            addContent();
-                        } else {
-                            // Collapsed state
-                            removeContent();
-                            m_button.setText(null);
-                          
-                            m_button.setContentDisplay(ContentDisplay.CENTER);
-                            
-                            // Fixed size when collapsed
-                            double size = SideBarPanel.DEFAULT_SMALL_WIDTH - 5;
-                            this.setPrefWidth(size);
-                            this.setMinWidth(size);
-                            this.setMaxWidth(size);
-                            this.setPrefHeight(size);
-                            this.setMinHeight(size);
-                            this.setMaxHeight(size);
-                            
-                            m_button.setPrefWidth(size);
-                            m_button.setPrefHeight(size);
-                        }
-                    });
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    throw new CancellationException("Button update cancelled");
+        return CompletableFuture.runAsync(() -> {
+            try {
+                long debounce = FrameRateMonitor.getInstance().getRecommendedDebounceDelay();
+                long step = 10;
+                for (long elapsed = 0; elapsed < debounce; elapsed += step) {
+                    if (cancel.get()) throw new InterruptedException("Cancelled");
+                    Thread.sleep(step);
                 }
-            }, TaskUtils.getVirtualExecutor())
-            .thenRunAsync(()->{
-                if(m_onExpandedChanged != null){
-                    m_onExpandedChanged.accept(isExpanded);
-                }
-            }, TaskUtils.getVirtualExecutor());
 
-        return task;
+                // Schedule UI update on FX thread
+                TaskUtils.fxDelay(_ -> {
+                    if (cancel.get()) return;
+
+                    // Optional: adjust button width to match current panel progress
+                    if (panelTimeline != null) {
+                        double progress = panelTimeline.getCurrentTime().toMillis() / panelTimeline.getTotalDuration().toMillis();
+                        double panelWidth = m_isExpanded.get() ? SideBarPanel.DEFAULT_SMALL_WIDTH + progress * (SideBarPanel.DEFAULT_LARGE_WIDTH - SideBarPanel.DEFAULT_SMALL_WIDTH)
+                                                        : SideBarPanel.DEFAULT_LARGE_WIDTH - progress * (SideBarPanel.DEFAULT_LARGE_WIDTH - SideBarPanel.DEFAULT_SMALL_WIDTH);
+                        this.setPrefWidth(panelWidth - 10);
+                    }
+
+                    if (isExpanded) {
+                        m_button.setText(m_title);
+                        m_button.setContentDisplay(ContentDisplay.LEFT);
+                        this.setPrefWidth(Region.USE_COMPUTED_SIZE);
+                        this.setMinWidth(SideBarPanel.DEFAULT_LARGE_WIDTH - 10);
+                        this.setMaxWidth(Double.MAX_VALUE);
+                        addContent();
+                    } else {
+                        removeContent();
+                        m_button.setText(null);
+                        m_button.setContentDisplay(ContentDisplay.CENTER);
+                        double size = SideBarPanel.DEFAULT_SMALL_WIDTH - 5;
+                        this.setPrefWidth(size);
+                        this.setMinWidth(size);
+                        this.setMaxWidth(size);
+                        this.setPrefHeight(size);
+                        this.setMinHeight(size);
+                        this.setMaxHeight(size);
+                    }
+                });
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new CancellationException("Button update cancelled");
+            }
+        }, TaskUtils.getVirtualExecutor()).thenAcceptAsync((_)->m_onExpandedChanged.accept(isExpanded, cancel));
     }
 
     private void addContent(){
@@ -167,7 +156,7 @@ public class SideBarButton extends VBox {
      * Called by SideBarPanel when scrollbar visibility changes
      */
     public void updateWidth(double containerWidth) {
-        if (m_isExpanded && containerWidth > 0) {
+        if (m_isExpanded.get() && containerWidth > 0) {
             this.setPrefWidth(containerWidth);
             this.setMaxWidth(containerWidth);
         }

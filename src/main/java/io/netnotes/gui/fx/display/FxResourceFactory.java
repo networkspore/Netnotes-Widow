@@ -31,7 +31,7 @@ public class FxResourceFactory {
     public static final KeyCombination KEY_COMB_CTL_Z = new KeyCodeCombination(KeyCode.Z, KeyCombination.SHORTCUT_DOWN);
     public static final KeyCombination KEY_COMB_CTL_U = new KeyCodeCombination(KeyCode.U, KeyCombination.SHORTCUT_DOWN);
 
-    public static int CURSOR_DELAY = 550;
+    public static int CURSOR_DELAY = 600;
 
     public final static Font openSansTxt;
     public final static Font openSansSmall;

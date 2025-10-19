@@ -177,7 +177,7 @@ public class TabManagerStage implements TabWindow {
         });
         
         // Listen for sidebar expand/collapse
-        sideBar.getExpandButton().setOnAction(_ -> {
+        sideBar.getM_expandButton().setOnAction(_ -> {
             sideBar.toggleExpanded();
             DeferredLayoutManager.markDirty(contentArea);
             NoteBytesArray currentTabId = m_currentTabIdProperty.get();

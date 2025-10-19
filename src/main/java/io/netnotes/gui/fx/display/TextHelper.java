@@ -4,8 +4,6 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 
-import javafx.embed.swing.SwingFXUtils;
-import javafx.scene.image.Image;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 
@@ -15,6 +13,8 @@ public class TextHelper {
     private Graphics2D m_tmpG2d = null;
     private java.awt.Font m_tmpFont = null;
     private FontMetrics m_tmpFm = null;
+
+   
 
     public double computeTextWidthSync(Font font, String text, double wrappingWidth) {
     
@@ -41,23 +41,29 @@ public class TextHelper {
         return w;
     }
 
-
     public int getCharacterSizeSync(int fontSize){
+        return getCharacterSizeSync("OCR A Extended", java.awt.Font.PLAIN, fontSize);
+    }
+
+    public int getCharacterSizeSync(String font, int fontStyle, int fontSize){
         m_tmpImg = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
         m_tmpG2d = m_tmpImg.createGraphics();
-        m_tmpFont = new java.awt.Font("OCR A Extended", java.awt.Font.PLAIN, fontSize);
+        m_tmpFont = new java.awt.Font(font, fontStyle, fontSize);
         m_tmpG2d.setFont(m_tmpFont);
         m_tmpFm = m_tmpG2d.getFontMetrics();
         
         int width = m_tmpFm.charWidth(' ');
+        dispose();
+
+        return width;
+    }
+
+    public void dispose(){
         m_tmpFm = null;
         m_tmpG2d.dispose();
         m_tmpG2d = null;
         m_tmpFont = null;
-
         m_tmpImg = null;
-
-        return width;
     }
 
     public int getStringWidthSync(String str, int fontSize, String fontName, int fontStyle){
@@ -69,12 +75,7 @@ public class TextHelper {
         
         int width = m_tmpFm.stringWidth(str);
 
-        m_tmpFm = null;
-        m_tmpG2d.dispose();
-        m_tmpG2d = null;
-        m_tmpFont = null;
-
-        m_tmpImg = null;
+        dispose();
 
         return width;
     }
@@ -104,54 +105,46 @@ public class TextHelper {
         return truncatedString;
     }
 
-     public static Image getPosNegText(String text,java.awt.Color posColor, java.awt.Color posHighlightColor, java.awt.Color negColor, java.awt.Color negHeightlightColor,  boolean positive, boolean neutral ) {
-     
-        int height = 30;
-
-
-        java.awt.Font font = new java.awt.Font("OCR A Extended", java.awt.Font.BOLD, 15);
-
-        BufferedImage img = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D g2d = img.createGraphics();
-        g2d.setFont(font);
-
-        FontMetrics fm = g2d.getFontMetrics();
-
-        int textWidth = fm.stringWidth(text);
-        int fontAscent = fm.getAscent();
-        int fontHeight = fm.getHeight();
-        int stringY = ((height - fontHeight) / 2) + fontAscent;
-
-
-        img = new BufferedImage(textWidth, height, BufferedImage.TYPE_INT_ARGB);
-        g2d = img.createGraphics();
-
-        g2d.setFont(font);
-
-
-        if (neutral) {
-            g2d.setColor(new java.awt.Color(0x777777));
-            g2d.drawString(text, 0, stringY);
-
-        } else {
-            java.awt.Color fillColor = java.awt.Color.BLUE;
-            g2d.setColor(fillColor);
-            g2d.drawString(text, 0, stringY);
-
-            int x1 = 0;
-            int y1 = (height / 2) - (fontHeight / 2);
-            int x2 = textWidth;
-            int y2 = y1 + fontHeight;
-            java.awt.Color color1 = positive ? posColor : negHeightlightColor;
-            java.awt.Color color2 = positive ? posHighlightColor : negColor;
-
-            ImageHelpers.drawBarFillColor(positive ? 0 : 1, false, fillColor.getRGB(), color1.getRGB(), color2.getRGB(), img, x1, y1, x2, y2);
-
-        }
-
-        g2d.dispose();
-
-        return SwingFXUtils.toFXImage(img, null);
+    
+      
+    public Text getHelper() {
+        return m_helper;
     }
 
+    public void setHelper(Text m_helper) {
+        this.m_helper = m_helper;
+    }
+
+    public BufferedImage getTmpImg() {
+        return m_tmpImg;
+    }
+
+    public void setTmpImg(BufferedImage m_tmpImg) {
+        this.m_tmpImg = m_tmpImg;
+    }
+
+    public Graphics2D getTmpG2d() {
+        return m_tmpG2d;
+    }
+
+    public void setTmpG2d(Graphics2D m_tmpG2d) {
+        this.m_tmpG2d = m_tmpG2d;
+    }
+
+    public java.awt.Font getTmpFont() {
+        return m_tmpFont;
+    }
+
+    public void setTmpFont(java.awt.Font tmpFont) {
+        this.m_tmpFont = tmpFont;
+    }
+
+    public FontMetrics getTmpFontMetrics() {
+        return m_tmpFm;
+    }
+
+    public void setTmpFontMetrics(FontMetrics m_tmpFm) {
+        this.m_tmpFm = m_tmpFm;
+    }
+    
 }

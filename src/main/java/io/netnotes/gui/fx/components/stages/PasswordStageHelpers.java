@@ -33,7 +33,7 @@ public class PasswordStageHelpers {
 
     
         Button closeBtn = new Button();
-        TopBar titleBox = new TopBar(smallIcon15, title, closeBtn, stage);
+        TopBar titleBox = new TopBar(smallIcon15, heading + " - " + title, closeBtn, stage);
 
     ImageView btnImageView = new ImageView(windowIcon100);
         btnImageView.setFitHeight(100);
@@ -97,14 +97,14 @@ public class PasswordStageHelpers {
    public static void createPassword(String heading, String title,Image smallIcon15, Image windowIcon100, Stage stage, 
         EventHandler<ActionEvent> closeEvent, Text passwordTxt, PassField passwordField)
     {
-        stage.setTitle(heading +" - " + title);
+        stage.setTitle(title);
         stage.setResizable(false);
         stage.initStyle(StageStyle.UNDECORATED);
         stage.getIcons().add(windowIcon100);
 
       
         Button closeBtn = new Button();
-        TopBar titleBox = new TopBar(smallIcon15, title, closeBtn, stage);
+        TopBar titleBox = new TopBar(smallIcon15, heading + " - " + title, closeBtn, stage);
 
     
         ImageView btnImageView = new ImageView(windowIcon100);
