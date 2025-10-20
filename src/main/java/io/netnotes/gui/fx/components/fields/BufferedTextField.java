@@ -2,22 +2,24 @@ package io.netnotes.gui.fx.components.fields;
 
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.beans.value.ChangeListener;
 import javafx.geometry.Insets;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.text.TextAlignment;
 import javafx.util.Duration;
 
 import io.netnotes.engine.noteBytes.NoteIntegerArray;
 import io.netnotes.gui.fx.components.images.BufferedCanvasView;
 import io.netnotes.gui.fx.display.FxResourceFactory;
-import io.netnotes.gui.fx.display.InputHelpers;
-import io.netnotes.gui.fx.display.FontMetricsCache;
+import io.netnotes.gui.fx.display.GraphicsContextPool;
+import io.netnotes.gui.fx.display.TextRenderer;
+import io.netnotes.gui.fx.input.InputHelpers;
+import io.netnotes.gui.fx.input.InputMask;
 
 import java.awt.*;
 import java.math.BigDecimal;
-import java.text.DecimalFormat;
-import java.util.function.Function;
 
 /**
  * Custom text field with direct rendering using BufferedCanvasView.
@@ -26,15 +28,69 @@ import java.util.function.Function;
 public class BufferedTextField extends BufferedCanvasView {
     private static final int DEFAULT_WIDTH = 400;
     private static final int DEFAULT_HEIGHT = 40;
+    private static final int VIEWPORT_BUFFER = GraphicsContextPool.SIZE_TOLERANCE; // Extra pixels in viewport to avoid frequent resizing
     
-    public enum TextPosition {
-        LEFT, CENTER, RIGHT
+    private static final int LINEAR_SEARCH_MAX = 1000;
+    
+    
+    public enum SizeMode {
+        FIXED,
+        HGROW,
+        VGROW,
+        HGROW_VGROW
     }
+
+   /**
+     * Unified rendering cache that shares glyph boundaries and computed values
+     * across all rendering and interaction methods within a frame.
+     * 
+     * Lifecycle:
+     * 1. prepareRenderCache() - Called at start of drawContent()
+     * 2. Various methods use cached values during the frame
+     * 3. invalidateRenderCache() - Called at end of drawContent() and on text changes
+     */
+    private static class RenderCache {
+        // Visible text state
+        String visibleText;
+        int visibleStartOffset;  // m_viewportOffset when cache was built
+        int visibleCodePointCount;
+        
+        // Layout dimensions
+        int textX;
+        int textY;
+        int paddingLeft;
+        int paddingRight;
+        int paddingTop;
+        int paddingBottom;
+        int availableWidth;
+        int availableHeight;
+        
+        // Glyph measurements
+        double[] glyphBoundaries;  // Cumulative widths for each code point
+        double totalWidth;
+        
+        // Cache validity
+        boolean valid;
+        
+        void invalidate() {
+            valid = false;
+            visibleText = null;
+            glyphBoundaries = null;
+        }
+        
+        boolean isValid() {
+            return valid && visibleText != null && glyphBoundaries != null;
+        }
+    }
+
+    private final RenderCache m_renderCache = new RenderCache();
     
     // Text storage
     private NoteIntegerArray m_text = new NoteIntegerArray();
     private int m_cursorPosition = 0; // Code point index
-    
+
+  
+
     // Text selection
     private int m_selectionStart = -1;
     private int m_selectionEnd = -1;
@@ -57,25 +113,38 @@ public class BufferedTextField extends BufferedCanvasView {
     private Color m_cursorColor = new Color(59, 130, 246); // Blue
     private Color m_selectionColor = new Color(59, 130, 246); // Blue
     private Color m_selectedTextColor = Color.WHITE;
-    private TextPosition m_textPosition = TextPosition.LEFT;
-    private Insets m_insets = new Insets(0);
-    private int m_margin = 20;
-   
+    private TextAlignment m_textAlignment = TextAlignment.LEFT;
+    
     // Placeholder
     private String m_placeholderText = "";
     private Color m_placeholderTextColor = new Color(150, 150, 150); // Gray
     
-    // Dimensions
-    private int m_fieldWidth = DEFAULT_WIDTH;
-    private int m_fieldHeight = DEFAULT_HEIGHT;
+    // Dimensions and viewport
+    private int m_preferredWidth = DEFAULT_WIDTH;
+    private int m_preferredHeight = DEFAULT_HEIGHT;
+    private int m_viewportWidth = DEFAULT_WIDTH + VIEWPORT_BUFFER;
+    private int m_viewportHeight = DEFAULT_HEIGHT;
+    private int m_minWidth = 50;
+    private int m_maxWidth = Integer.MAX_VALUE;
+    private int m_minHeight = 50;
+    private int m_maxHeight = Integer.MAX_VALUE;
+    private SizeMode m_sizeMode = SizeMode.FIXED;
+    
+    // Padding
+    private Insets m_insets = new Insets(0);
+    private int m_margin = 20;
     
     // Validation and formatting
     private TextValidator m_validator = null;
     private InputMask m_inputMask = null;
     
-    // Cached font metrics (from global cache)
-    private FontMetrics m_cachedFontMetrics = null;
+    // Text renderer (singleton)
+    private final TextRenderer m_textRenderer = TextRenderer.getInstance();
     
+    // Layout listeners
+    private ChangeListener<Number> widthListener = null;
+    private ChangeListener<Number> heightListener = null;
+
     // ========== Functional Interfaces ==========
     
     @FunctionalInterface
@@ -83,120 +152,34 @@ public class BufferedTextField extends BufferedCanvasView {
         boolean validate(String text);
     }
     
-    /**
-     * Input mask for formatted text entry (like currency, dates, etc.)
-     */
-    public static class InputMask {
-        private String m_pattern;
-        private DecimalFormat m_decimalFormat;
-        private int m_maxLength = -1;
-        private int m_decimalPlaces = -1;
-        private Function<String, String> m_formatter;
-        
-        private InputMask(String pattern) {
-            m_pattern = pattern;
-        }
-        
-        public static InputMask currency(int maxDigitsBeforeDecimal, int decimalPlaces) {
-            InputMask mask = new InputMask("currency");
-            StringBuilder pattern = new StringBuilder("$");
-            for (int i = 0; i < maxDigitsBeforeDecimal; i++) {
-                pattern.append("#");
-            }
-            if (decimalPlaces > 0) {
-                pattern.append(".");
-                for (int i = 0; i < decimalPlaces; i++) {
-                    pattern.append("0");
-                }
-            }
-            mask.m_decimalFormat = new DecimalFormat(pattern.toString());
-            mask.m_maxLength = maxDigitsBeforeDecimal + (decimalPlaces > 0 ? decimalPlaces + 1 : 0);
-            mask.m_decimalPlaces = decimalPlaces;
-            return mask;
-        }
-        
-        public static InputMask decimal(int maxDigitsBeforeDecimal, int decimalPlaces) {
-            InputMask mask = new InputMask("decimal");
-            StringBuilder pattern = new StringBuilder();
-            for (int i = 0; i < maxDigitsBeforeDecimal; i++) {
-                pattern.append("#");
-            }
-            if (decimalPlaces > 0) {
-                pattern.append(".");
-                for (int i = 0; i < decimalPlaces; i++) {
-                    pattern.append("0");
-                }
-            }
-            mask.m_decimalFormat = new DecimalFormat(pattern.toString());
-            mask.m_maxLength = maxDigitsBeforeDecimal + (decimalPlaces > 0 ? decimalPlaces + 1 : 0);
-            mask.m_decimalPlaces = decimalPlaces;
-            return mask;
-        }
-        
-        public static InputMask custom(Function<String, String> formatter, int maxLength) {
-            InputMask mask = new InputMask("custom");
-            mask.m_formatter = formatter;
-            mask.m_maxLength = maxLength;
-            return mask;
-        }
-        
-        public String format(String input) {
-            if (m_formatter != null) {
-                return m_formatter.apply(input);
-            }
-            
-            if (m_decimalFormat != null) {
-                // Use InputHelpers for proper number formatting
-                String cleaned = InputHelpers.formatStringToNumber(input, 
-                    m_decimalPlaces >= 0 ? m_decimalPlaces : 10);
-                
-                if (cleaned.isEmpty() || InputHelpers.isTextZero(cleaned)) {
-                    return "";
-                }
-                
-                try {
-                    BigDecimal value = new BigDecimal(cleaned);
-                    return m_decimalFormat.format(value);
-                } catch (NumberFormatException e) {
-                    return input;
-                }
-            }
-            
-            return input;
-        }
-        
-        public boolean isValidInput(String input) {
-            if (m_maxLength > 0 && input.length() > m_maxLength) {
-                return false;
-            }
-            
-            if (m_decimalFormat != null) {
-                // Allow digits, decimal point, and handle partial input
-                return input.matches("[\\d.]*");
-            }
-            
-            return true;
-        }
-    }
-    
     // ========== Constructors ==========
     
-    public BufferedTextField() {
+    private BufferedTextField(boolean renderImmediate) {
         super();
         setRenderMode(RenderMode.GENERATE);
         setFocusTraversable(true);
         
+        // Calculate initial height from font
+        updateHeightFromFont();
+
         setupCursorBlink();
         setupEventHandlers();
-        requestRender();
+        setupLayoutListeners();
+        if(renderImmediate){
+            requestRender();
+        }
+    }
+
+    public BufferedTextField() {
+        this(true);
     }
     
     public BufferedTextField(int width, int height) {
-        this();
-        m_fieldWidth = width;
-        m_fieldHeight = height;
-        requestRender();
+        this(false);
+        setSizeMode(SizeMode.FIXED, false);
+        setPreferredSize(width, height);
     }
+    
 
     public Insets getInsets(){
         return m_insets;
@@ -204,6 +187,8 @@ public class BufferedTextField extends BufferedCanvasView {
 
     public void setInsets(Insets insets){
         m_insets = insets;
+        invalidateRenderCache();
+        requestRender();
     }
 
     public int getMargin(){
@@ -213,144 +198,104 @@ public class BufferedTextField extends BufferedCanvasView {
     public void setMargin(int margin){
         m_margin = margin;
     }
+
     
     // ========== BufferedCanvasView Implementation ==========
     
     @Override
     protected int getGeneratedWidth() {
-        return m_fieldWidth;
+        return m_viewportWidth;
     }
     
     @Override
     protected int getGeneratedHeight() {
-        return m_fieldHeight;
-    }
-    
-    @Override
-    protected void drawContent(Graphics2D g2d, int width, int height) {
-        // Cache font metrics from global cache
-        if (m_cachedFontMetrics == null) {
-            m_cachedFontMetrics = FontMetricsCache.getInstance().getMetrics(m_font);
-        }
-        
-        // Update viewport to keep cursor visible
-        updateViewport();
-        
-        // Background is transparent - let CSS handle it
-        g2d.setComposite(AlphaComposite.Clear);
-        g2d.fillRect(0, 0, width, height);
-        g2d.setComposite(AlphaComposite.SrcOver);
-        
-        // Set font
-        g2d.setFont(m_font);
-        
-        // Get padding from CSS insets
-        Insets insets = getInsets();
-        int paddingLeft = (int) insets.getLeft();
-        int paddingRight = (int) insets.getRight();
-        int paddingTop = (int) insets.getTop();
-        int paddingBottom = (int) insets.getBottom();
-        
-        int availableWidth = width - paddingLeft - paddingRight;
-        int availableHeight = height - paddingTop - paddingBottom;
-        
-        int textY = paddingTop + (availableHeight + m_cachedFontMetrics.getAscent() - 
-                     m_cachedFontMetrics.getDescent()) / 2;
-        
-        // Draw placeholder or text
-        if (m_text.isEmpty() && !m_isFocused && !m_placeholderText.isEmpty()) {
-            drawPlaceholder(g2d, textY, paddingLeft, availableWidth);
-        } else if (!m_text.isEmpty()) {
-            drawTextWithSelection(g2d, textY, paddingLeft, availableWidth, paddingTop, availableHeight);
-        }
-        
-        // Draw cursor if focused and visible (but not when selecting)
-        if (m_isFocused && m_cursorVisible && !hasSelection() && isCursorInViewport()) {
-            drawCursor(g2d, textY, paddingLeft, availableWidth, paddingTop, availableHeight);
-        }
-    }
-    
-    private void drawPlaceholder(Graphics2D g2d, int textY, int paddingLeft, int availableWidth) {
-        g2d.setColor(m_placeholderTextColor);
-        int x = getTextX(m_placeholderText, paddingLeft, availableWidth);
-        g2d.drawString(m_placeholderText, x, textY);
-    }
-    
-    private void drawTextWithSelection(Graphics2D g2d, int textY, int paddingLeft, 
-                                       int availableWidth, int paddingTop, int availableHeight) {
-        String visibleText = getVisibleText();
-        int textX = getTextX(visibleText, paddingLeft, availableWidth);
-        
-        // Set clipping to prevent drawing outside available area
-        Shape oldClip = g2d.getClip();
-        g2d.setClip(paddingLeft, paddingTop, availableWidth, availableHeight);
-        
-        if (hasSelection() && isSelectionInViewport()) {
-            // Draw text in three parts: before selection, selection, after selection
-            int visibleStart = m_viewportOffset;
-            int visibleEnd = visibleStart + visibleText.codePointCount(0, visibleText.length());
-            
-            int selStart = Math.max(m_selectionStart, visibleStart);
-            int selEnd = Math.min(m_selectionEnd, visibleEnd);
-            
-            // Text before selection
-            if (selStart > visibleStart) {
-                String beforeSel = m_text.substring(visibleStart, selStart).toString();
-                g2d.setColor(m_textColor);
-                g2d.drawString(beforeSel, textX, textY);
-                textX += getStringWidth(beforeSel);
-            }
-            
-            // Selection
-            String selectedText = m_text.substring(selStart, selEnd).toString();
-            int selectionWidth = getStringWidth(selectedText);
-            
-            // Draw selection background
-            g2d.setColor(m_selectionColor);
-            g2d.fillRect(textX, paddingTop, selectionWidth, availableHeight);
-            
-            // Draw selected text
-            g2d.setColor(m_selectedTextColor);
-            g2d.drawString(selectedText, textX, textY);
-            textX += selectionWidth;
-            
-            // Text after selection
-            if (selEnd < visibleEnd) {
-                String afterSel = m_text.substring(selEnd, visibleEnd).toString();
-                g2d.setColor(m_textColor);
-                g2d.drawString(afterSel, textX, textY);
-            }
-        } else {
-            // No selection, draw normally
-            g2d.setColor(m_textColor);
-            g2d.drawString(visibleText, textX, textY);
-        }
-        
-        // Restore original clip
-        g2d.setClip(oldClip);
-    }
-    
-    private void drawCursor(Graphics2D g2d, int textY, int paddingLeft, int availableWidth,
-                           int paddingTop, int availableHeight) {
-        int visualCursorPos = m_cursorPosition - m_viewportOffset;
-        String textBeforeCursor = m_text.substring(
-            m_viewportOffset, m_viewportOffset + visualCursorPos).toString();
-        
-        String visibleText = getVisibleText();
-        int baseX = getTextX(visibleText, paddingLeft, availableWidth);
-        int cursorX = baseX + getStringWidth(textBeforeCursor);
-        
-        g2d.setColor(m_cursorColor);
-        g2d.fillRect(cursorX, paddingTop, 2, availableHeight);
+        return m_viewportHeight;
     }
     
     /**
-     * Get X position based on text alignment
+     * Calculate height from font metrics and padding
      */
-    private int getTextX(String text, int paddingLeft, int availableWidth) {
-        int textWidth = getStringWidth(text);
+    public void updateHeightFromFont() {
+        FontMetrics metrics = m_textRenderer.getMetrics(m_font);
         
-        switch (m_textPosition) {
+        setPrefHeight(metrics.getHeight() + getInsets().getTop() + getInsets().getBottom());
+    }
+
+    /**
+     * Setup listeners for layout changes
+     */
+    private void setupLayoutListeners() {
+  
+        if(isHgrow()){
+            if(widthListener == null){
+                widthListener = (_, _,newVal)-> {
+                    int val = (int) Math.ceil(newVal.doubleValue());
+                    if (isHgrow() && val > 0) {
+                        setPrefWidth(val);
+                    }
+                };
+                widthProperty().addListener(widthListener);
+            }
+        }else{
+            if(widthListener != null){
+                widthProperty().removeListener(widthListener);
+                widthListener = null;
+            }
+        }
+        if(isVgrow()){
+            if(heightListener == null){
+                heightListener = (_, _, newVal) -> {
+                    double val = newVal.doubleValue();
+                    if (isVgrow()) {
+                        setPrefHeight(val);
+                    }
+                };
+                heightProperty().addListener(heightListener);
+            }
+        }else{
+            if(heightListener != null){
+                heightProperty().removeListener(heightListener);
+                heightListener = null;
+            }
+        }
+         
+        
+    }
+    
+    public boolean isHgrow(){
+        return m_sizeMode == SizeMode.HGROW || m_sizeMode == SizeMode.HGROW_VGROW;
+    }
+
+    public boolean isVgrow(){
+        return m_sizeMode == SizeMode.VGROW || m_sizeMode == SizeMode.HGROW_VGROW;
+    }
+  
+    
+    @Override
+    public double prefWidth(double height) {
+        return m_preferredWidth;
+    }
+    
+    @Override
+    public double prefHeight(double width) {
+        return m_preferredHeight;
+    }
+    
+    @Override
+    public double minWidth(double height) {
+        return m_minWidth;
+    }
+    
+    @Override
+    public double maxWidth(double height) {
+        return m_maxWidth;
+    }
+
+    /**
+     * Calculate X position based on text alignment (extracted from getTextX)
+     */
+    private int calculateTextX(int textWidth, int paddingLeft, int availableWidth) {
+        switch (m_textAlignment) {
             case CENTER:
                 return paddingLeft + Math.max(0, (availableWidth - textWidth) / 2) - m_scrollOffset;
             case RIGHT:
@@ -360,24 +305,202 @@ public class BufferedTextField extends BufferedCanvasView {
                 return paddingLeft;
         }
     }
-    
-    // ========== String Width Calculation ==========
-    
-    /**
-     * Get string width using global font metrics cache.
-     * Properly handles surrogate pairs (emoji outside BMP).
+
+
+   /**
+     * Prepare render cache with all values needed for this frame.
+     * Called once at the start of drawContent().
+     * 
+     * This is the single source of truth for visible text and glyph boundaries
+     * during a render pass.
      */
-    private int getStringWidth(String str) {
-        return FontMetricsCache.getInstance().getStringWidth(m_font, str);
+    private void prepareRenderCache() {
+        // Get layout dimensions
+        Insets insets = getInsets();
+        m_renderCache.paddingLeft = (int) insets.getLeft();
+        m_renderCache.paddingRight = (int) insets.getRight();
+        m_renderCache.paddingTop = (int) insets.getTop();
+        m_renderCache.paddingBottom = (int) insets.getBottom();
+        
+        m_renderCache.availableWidth = m_preferredWidth - m_renderCache.paddingLeft - m_renderCache.paddingRight;
+        m_renderCache.availableHeight = m_preferredHeight - m_renderCache.paddingTop - m_renderCache.paddingBottom;
+        
+        // Calculate text Y position
+        FontMetrics metrics = m_textRenderer.getMetrics(m_font);
+        m_renderCache.textY = m_renderCache.paddingTop + 
+            (m_renderCache.availableHeight + metrics.getAscent() - metrics.getDescent()) / 2;
+        
+        // Get visible text and viewport state
+        m_renderCache.visibleText = getVisibleText();
+        m_renderCache.visibleStartOffset = m_viewportOffset;
+        
+        if (m_renderCache.visibleText.isEmpty()) {
+            m_renderCache.textX = m_renderCache.paddingLeft;
+            m_renderCache.totalWidth = 0;
+            m_renderCache.glyphBoundaries = new double[]{0.0};
+            m_renderCache.visibleCodePointCount = 0;
+            m_renderCache.valid = true;
+            return;
+        }
+        
+        // Calculate glyph boundaries
+        m_renderCache.glyphBoundaries = calculateGlyphBoundaries(m_renderCache.visibleText, m_font);
+        m_renderCache.visibleCodePointCount = m_renderCache.glyphBoundaries.length - 1;
+        m_renderCache.totalWidth = m_renderCache.glyphBoundaries[m_renderCache.visibleCodePointCount];
+        
+        // Calculate text X position based on alignment
+        m_renderCache.textX = calculateTextX((int) m_renderCache.totalWidth, 
+            m_renderCache.paddingLeft, m_renderCache.availableWidth);
+        
+        m_renderCache.valid = true;
+    }
+
+     /**
+     * Invalidate render cache (call on text changes, font changes, or layout changes)
+     */
+    private void invalidateRenderCache() {
+        m_renderCache.invalidate();
+    }
+    
+    @Override
+    protected void drawContent(Graphics2D g2d, int width, int height) {
+        // Update viewport to keep cursor visible
+        updateViewport();
+        
+        // Prepare render cache ONCE for this frame
+        prepareRenderCache();
+        
+        // Clear background
+        g2d.setComposite(AlphaComposite.Clear);
+        g2d.fillRect(0, 0, width, height);
+        g2d.setComposite(AlphaComposite.SrcOver);
+        
+        // Set font
+        g2d.setFont(m_font);
+        
+        // Set clipping ONCE to visible area
+        g2d.setClip(m_renderCache.paddingLeft, m_renderCache.paddingTop, 
+                    m_renderCache.availableWidth, m_renderCache.availableHeight);
+        
+        // Draw placeholder, text, or cursor
+        if (m_text.isEmpty() && !m_isFocused && !m_placeholderText.isEmpty()) {
+            drawPlaceholder(g2d);
+        } else if (!m_text.isEmpty()) {
+            drawTextWithSelection(g2d);
+        }
+        
+        // Draw cursor if focused and visible
+        if (m_isFocused && m_cursorVisible && !hasSelection() && isCursorInViewport()) {
+            drawCursor(g2d);
+        }
+        
+        // Reset clip
+        g2d.setClip(null);
     }
     
     /**
-     * Get precise string width for variable-width fonts
+     * Draw placeholder text using render cache
      */
-    private double getStringWidthPrecise(String str) {
-        return FontMetricsCache.getInstance().getStringWidthPrecise(m_font, str);
+    private void drawPlaceholder(Graphics2D g2d) {
+        g2d.setColor(m_placeholderTextColor);
+        int x = calculateTextX(
+            m_textRenderer.getTextWidth(m_placeholderText, m_font), 
+            m_renderCache.paddingLeft, 
+            m_renderCache.availableWidth
+        );
+        g2d.drawString(m_placeholderText, x, m_renderCache.textY);
     }
     
+    /**
+     * Optimized text drawing with selection highlighting
+     * Uses render cache for all measurements
+     */
+    private void drawTextWithSelection(Graphics2D g2d) {
+        String visibleText = m_renderCache.visibleText;
+        int textX = m_renderCache.textX;
+        int textY = m_renderCache.textY;
+        double[] boundaries = m_renderCache.glyphBoundaries;
+        
+        if (!hasSelection() || !isSelectionInViewport()) {
+            // No selection - simple single draw
+            g2d.setColor(m_textColor);
+            g2d.drawString(visibleText, textX, textY);
+            return;
+        }
+        
+        // Calculate selection boundaries
+        int visibleStart = m_renderCache.visibleStartOffset;
+        int visibleEnd = visibleStart + m_renderCache.visibleCodePointCount;
+        
+        int selStart = Math.max(m_selectionStart, visibleStart);
+        int selEnd = Math.min(m_selectionEnd, visibleEnd);
+        
+        // Early exit if selection outside viewport
+        if (selEnd <= visibleStart || selStart >= visibleEnd) {
+            g2d.setColor(m_textColor);
+            g2d.drawString(visibleText, textX, textY);
+            return;
+        }
+        
+        // Convert to viewport-relative indices
+        int relativeSelStart = selStart - visibleStart;
+        int relativeSelEnd = selEnd - visibleStart;
+        
+        // Use glyph boundaries for positioning
+        double beforeSelWidth = boundaries[relativeSelStart];
+        double selectionWidth = boundaries[relativeSelEnd] - beforeSelWidth;
+        
+        int currentX = textX;
+        
+        // 1. Draw text before selection
+        if (relativeSelStart > 0) {
+            String beforeSel = visibleText.substring(0, 
+                visibleText.offsetByCodePoints(0, relativeSelStart));
+            g2d.setColor(m_textColor);
+            g2d.drawString(beforeSel, currentX, textY);
+            currentX += (int) beforeSelWidth;
+        }
+        
+        // 2. Draw selection background
+        g2d.setColor(m_selectionColor);
+        g2d.fillRect(currentX, m_renderCache.paddingTop, 
+                    (int) Math.ceil(selectionWidth), m_renderCache.availableHeight);
+        
+        // 3. Draw selected text
+        int selStartOffset = visibleText.offsetByCodePoints(0, relativeSelStart);
+        int selEndOffset = visibleText.offsetByCodePoints(0, relativeSelEnd);
+        String selectedText = visibleText.substring(selStartOffset, selEndOffset);
+        g2d.setColor(m_selectedTextColor);
+        g2d.drawString(selectedText, currentX, textY);
+        currentX += (int) selectionWidth;
+        
+        // 4. Draw text after selection
+        if (relativeSelEnd < m_renderCache.visibleCodePointCount) {
+            String afterSel = visibleText.substring(selEndOffset);
+            g2d.setColor(m_textColor);
+            g2d.drawString(afterSel, currentX, textY);
+        }
+    }
+    
+    /**
+     * Optimized cursor drawing using render cache
+     */
+    private void drawCursor(Graphics2D g2d) {
+        int visualCursorPos = m_cursorPosition - m_renderCache.visibleStartOffset;
+        
+        // Use pre-calculated glyph boundaries
+        double[] boundaries = m_renderCache.glyphBoundaries;
+        double cursorOffset = (visualCursorPos < boundaries.length) 
+            ? boundaries[visualCursorPos] 
+            : boundaries[boundaries.length - 1];
+        
+        int cursorX = m_renderCache.textX + (int) cursorOffset;
+        
+        g2d.setColor(m_cursorColor);
+        g2d.fillRect(cursorX, m_renderCache.paddingTop, 2, m_renderCache.availableHeight);
+    }
+    
+
     // ========== Selection Management ==========
     
     private boolean hasSelection() {
@@ -407,6 +530,7 @@ public class BufferedTextField extends BufferedCanvasView {
             m_text.delete(start, end);
             m_cursorPosition = start;
             clearSelection();
+            invalidateRenderCache();
         }
     }
     
@@ -418,14 +542,20 @@ public class BufferedTextField extends BufferedCanvasView {
             m_scrollOffset = 0;
             return;
         }
+        String newVisibleText = getVisibleText(); // Calculate new visible text
+        
+        // Only invalidate if visible portion changed
+        if (!m_renderCache.isValid() || !newVisibleText.equals(m_renderCache.visibleText)) {
+            invalidateRenderCache();
+        }
         
         Insets insets = getInsets();
         int paddingLeft = (int) insets.getLeft();
         int paddingRight = (int) insets.getRight();
-        int availableWidth = m_fieldWidth - paddingLeft - paddingRight;
+        int availableWidth = m_preferredWidth - paddingLeft - paddingRight;
         
         // LEFT alignment - traditional scrolling
-        if (m_textPosition == TextPosition.LEFT) {
+        if (m_textAlignment == TextAlignment.LEFT) {
             m_scrollOffset = 0;
             
             // If cursor is before viewport, scroll left
@@ -438,7 +568,7 @@ public class BufferedTextField extends BufferedCanvasView {
             while (m_cursorPosition > m_viewportOffset) {
                 String textToCursor = m_text.substring(
                     m_viewportOffset, m_cursorPosition).toString();
-                int textWidth = getStringWidth(textToCursor);
+                int textWidth = m_textRenderer.getTextWidth(textToCursor, m_font);
                 
                 if (textWidth <= availableWidth - 4) {
                     break;
@@ -451,7 +581,7 @@ public class BufferedTextField extends BufferedCanvasView {
         else {
             m_viewportOffset = 0;
             String fullText = m_text.toString();
-            int fullWidth = getStringWidth(fullText);
+            int fullWidth = m_textRenderer.getTextWidth(fullText, m_font);
             
             // If text fits, center/right align naturally (no scroll needed)
             if (fullWidth <= availableWidth) {
@@ -461,11 +591,11 @@ public class BufferedTextField extends BufferedCanvasView {
             
             // Calculate cursor position in pixels
             String textBeforeCursor = m_text.substring(0, m_cursorPosition).toString();
-            int cursorPixelPos = getStringWidth(textBeforeCursor);
+            int cursorPixelPos = m_textRenderer.getTextWidth(textBeforeCursor, m_font);
             
             // Calculate where cursor would appear with current scroll
             int displayPos = 0;
-            if (m_textPosition == TextPosition.CENTER) {
+            if (m_textAlignment == TextAlignment.CENTER) {
                 displayPos = (availableWidth - fullWidth) / 2 + cursorPixelPos - m_scrollOffset;
             } else { // RIGHT
                 displayPos = availableWidth - fullWidth + cursorPixelPos - m_scrollOffset;
@@ -496,17 +626,17 @@ public class BufferedTextField extends BufferedCanvasView {
         Insets insets = getInsets();
         int paddingLeft = (int) insets.getLeft();
         int paddingRight = (int) insets.getRight();
-        int availableWidth = m_fieldWidth - paddingLeft - paddingRight;
+        int availableWidth = m_preferredWidth - paddingLeft - paddingRight;
         
         // For CENTER/RIGHT with scrolling, show all text
-        if (m_textPosition != TextPosition.LEFT && m_scrollOffset > 0) {
+        if (m_textAlignment != TextAlignment.LEFT && m_scrollOffset > 0) {
             return m_text.toString();
         }
         
         // For LEFT or CENTER/RIGHT without scrolling
-        if (m_textPosition != TextPosition.LEFT) {
+        if (m_textAlignment != TextAlignment.LEFT) {
             String fullText = m_text.toString();
-            int fullWidth = getStringWidth(fullText);
+            int fullWidth = m_textRenderer.getTextWidth(fullText, m_font);
             
             if (fullWidth <= availableWidth) {
                 return fullText;
@@ -517,7 +647,7 @@ public class BufferedTextField extends BufferedCanvasView {
         
         while (endPos < m_text.length()) {
             String chunk = m_text.substring(m_viewportOffset, endPos + 1).toString();
-            int width = getStringWidth(chunk);
+            int width = m_textRenderer.getTextWidth(chunk, m_font);
             
             if (width > availableWidth) {
                 break;
@@ -528,24 +658,31 @@ public class BufferedTextField extends BufferedCanvasView {
         return m_text.substring(m_viewportOffset, endPos).toString();
     }
     
+    /**
+     * Check if cursor is in viewport using render cache if available
+     */
     private boolean isCursorInViewport() {
+        if (m_renderCache.isValid()) {
+            int visualCursorPos = m_cursorPosition - m_renderCache.visibleStartOffset;
+            return visualCursorPos >= 0 && visualCursorPos <= m_renderCache.visibleCodePointCount;
+        }
+        
+        // Fallback to old calculation if cache not available
+        int endPos = m_viewportOffset;
         Insets insets = getInsets();
         int paddingLeft = (int) insets.getLeft();
         int paddingRight = (int) insets.getRight();
-        int availableWidth = m_fieldWidth - paddingLeft - paddingRight;
-        
-        int endPos = m_viewportOffset;
+        int availableWidth = m_preferredWidth - paddingLeft - paddingRight;
         
         while (endPos < m_text.length()) {
             String chunk = m_text.substring(m_viewportOffset, endPos + 1).toString();
-            int width = getStringWidth(chunk);
+            int width = m_textRenderer.getTextWidth(chunk, m_font);
             if (width > availableWidth) break;
             endPos++;
         }
         
         return m_cursorPosition >= m_viewportOffset && m_cursorPosition <= endPos;
     }
-    
     // ========== Cursor Management ==========
     
     private void setupCursorBlink() {
@@ -674,9 +811,12 @@ public class BufferedTextField extends BufferedCanvasView {
     private void handleMousePressed(MouseEvent event) {
         requestFocus();
         
-        Insets insets = getInsets();
-        int paddingLeft = (int) insets.getLeft();
-        double x = event.getX() - paddingLeft;
+        // Ensure cache is prepared for cursor estimation
+        if (!m_renderCache.isValid()) {
+            prepareRenderCache();
+        }
+        
+        double x = event.getX();
         int clickedPos = estimateCursorPosition(x);
         
         m_cursorPosition = clickedPos;
@@ -690,9 +830,12 @@ public class BufferedTextField extends BufferedCanvasView {
     
     private void handleMouseDragged(MouseEvent event) {
         if (m_isSelecting) {
-            Insets insets = getInsets();
-            int paddingLeft = (int) insets.getLeft();
-            double x = event.getX() - paddingLeft;
+            // Cache should still be valid from mousePressed or last render
+            if (!m_renderCache.isValid()) {
+                prepareRenderCache();
+            }
+            
+            double x = event.getX();
             int dragPos = estimateCursorPosition(x);
             
             m_cursorPosition = dragPos;
@@ -756,43 +899,37 @@ public class BufferedTextField extends BufferedCanvasView {
             applyInputMask();
         }
         
+        invalidateRenderCache(); 
         requestRender();
     }
     
+    /**
+     * Apply input mask formatting and adjust cursor position intelligently
+     */
     private void applyInputMask() {
+        if (m_inputMask == null) {
+            return;
+        }
+        
         String original = m_text.toString();
         String formatted = m_inputMask.format(original);
         
         if (!formatted.equals(original)) {
-            // Track cursor position relative to content changes
-            // Get the text before cursor in original
-            String beforeCursorOriginal = m_text.substring(0, 
-                Math.min(m_cursorPosition, original.length())).toString();
-            
-            // Count significant characters (digits) before cursor
-            int digitsBeforeCursor = 0;
-            for (int i = 0; i < beforeCursorOriginal.length(); i++) {
-                char c = beforeCursorOriginal.charAt(i);
-                if (Character.isDigit(c)) {
-                    digitsBeforeCursor++;
-                }
-            }
+            // Calculate new cursor position using mask's cursor tracker
+            int newCursorPos = m_inputMask.calculateCursorPosition(
+                original, 
+                m_cursorPosition, 
+                formatted
+            );
             
             // Update text
             m_text = new NoteIntegerArray(formatted);
             
-            // Find new cursor position by counting same number of digits
-            int newCursorPos = 0;
-            int digitsFound = 0;
-            for (int i = 0; i < formatted.length() && digitsFound < digitsBeforeCursor; i++) {
-                char c = formatted.charAt(i);
-                if (Character.isDigit(c)) {
-                    digitsFound++;
-                }
-                newCursorPos = i + 1;
-            }
+            // Update cursor position
+            m_cursorPosition = Math.max(0, Math.min(newCursorPos, m_text.length()));
             
-            m_cursorPosition = Math.min(newCursorPos, m_text.length());
+            // Invalidate render cache since text changed
+            invalidateRenderCache();
         }
     }
     
@@ -800,6 +937,7 @@ public class BufferedTextField extends BufferedCanvasView {
         if (m_cursorPosition > 0) {
             m_text.deleteCodePointAt(m_cursorPosition - 1);
             m_cursorPosition--;
+            invalidateRenderCache();
             requestRender();
         }
     }
@@ -807,6 +945,7 @@ public class BufferedTextField extends BufferedCanvasView {
     private void deleteAfterCursor() {
         if (m_cursorPosition < m_text.length()) {
             m_text.deleteCodePointAt(m_cursorPosition);
+            invalidateRenderCache();
             requestRender();
         }
     }
@@ -824,61 +963,171 @@ public class BufferedTextField extends BufferedCanvasView {
             requestRender();
         }
     }
+
+
+    /**
+     * Calculate glyph boundaries for the given text.
+     * Returns an array where index i contains the cumulative width up to code point i.
+     * 
+     * Example: "Hi" → [0.0, 8.5, 14.2]
+     *   - boundaries[0] = 0 (start)
+     *   - boundaries[1] = 8.5 (after 'H')
+     *   - boundaries[2] = 14.2 (after 'i')
+     * 
+     * @param text The text to measure
+     * @param font The font to use
+     * @return Array of cumulative widths (length = codePointCount + 1)
+     */
+    private double[] calculateGlyphBoundaries(String text, Font font) {
+        if (text.isEmpty()) {
+            return new double[]{0.0};
+        }
+        
+        int codePointCount = text.codePointCount(0, text.length());
+        double[] boundaries = new double[codePointCount + 1];
+        
+        double cumulativeWidth = 0.0;
+        int boundaryIndex = 0;
+        int charIndex = 0;
+        
+        boundaries[boundaryIndex++] = 0.0; // Start position
+        
+        while (charIndex < text.length()) {
+            int codePoint = text.codePointAt(charIndex);
+            int charCount = Character.charCount(codePoint);
+            int nextIndex = charIndex + charCount;
+            
+            // Measure the individual glyph
+            // Note: For ligatures, we measure from start to handle them correctly
+            String glyphStr = text.substring(charIndex, nextIndex);
+            double glyphWidth = m_textRenderer.getTextWidthPrecise(glyphStr, font);
+            
+            cumulativeWidth += glyphWidth;
+            boundaries[boundaryIndex++] = cumulativeWidth;
+            
+            charIndex = nextIndex;
+        }
+        
+        return boundaries;
+    }
+
     
-    private int estimateCursorPosition(double x) {
-        if (m_cachedFontMetrics == null) {
+
+
+    private int estimateCursorPosition(double x){
+        if (!m_renderCache.isValid()) {
+            prepareRenderCache();
+        }
+        if(m_text.byteLength() > Integer.BYTES * LINEAR_SEARCH_MAX){
+            return estimateCursorPositionBinary(x);
+        }else{
+            return estimateCursorPositionLinear(x);
+        }
+    }
+
+    
+    /**
+     * Estimate cursor position from mouse click X coordinate.
+     * Uses pre-computed glyph boundaries for O(n) performance.
+     * 
+     * @param x Mouse X position relative to text area (after padding adjustment)
+     * @return Code point index in visible text
+     */
+    private int estimateCursorPositionBinary(double x) {
+      
+        String visibleText = m_renderCache.visibleText;
+        
+        if (visibleText.isEmpty()) {
             return m_viewportOffset;
         }
         
-        Insets insets = getInsets();
-        int paddingLeft = (int) insets.getLeft();
-        int paddingRight = (int) insets.getRight();
-        int availableWidth = m_fieldWidth - paddingLeft - paddingRight;
         
-        String visibleText = getVisibleText();
-        int baseX = getTextX(visibleText, paddingLeft, availableWidth);
-        double relativeX = x - baseX;
+        double relativeX = x - m_renderCache.textX;
+
+        // Get or compute glyph boundaries
+        double[] boundaries = m_renderCache.glyphBoundaries;
+        int codePointCount = m_renderCache.visibleCodePointCount;
+
+        // Early exit: Click before text start
+        if (relativeX <= boundaries[0]) {
+            return m_viewportOffset;
+        }
+
+        // Early exit: Click after text end
+        if (relativeX >= boundaries[codePointCount]) {
+            return m_viewportOffset + codePointCount;
+        }
+
+        // Binary search for nearest boundary (O(log n))
+        // This is more efficient than linear scan for long text
+        int left = 0;
+        int right = codePointCount;
         
-        int closestPos = m_viewportOffset;
-        double closestDist = Math.abs(relativeX);
-        
-        int visibleLength = visibleText.codePointCount(0, visibleText.length());
-        
-        // Use getStringBounds for better precision with variable-width fonts
-        for (int i = 0; i <= visibleLength; i++) {
-            int absolutePos = m_viewportOffset + i;
-            if (absolutePos > m_text.length()) break;
+        while (left < right) {
+            int mid = (left + right) / 2;
+            double midPoint = (boundaries[mid] + boundaries[mid + 1]) / 2.0;
             
-            String textBeforePos = m_text.substring(
-                m_viewportOffset, absolutePos).toString();
-            
-            // Use precise measurement for cursor positioning
-            double textWidth = textBeforePos.isEmpty() ? 0 : 
-                getStringWidthPrecise(textBeforePos);
-            
-            double dist = Math.abs(relativeX - textWidth);
-            
-            if (dist < closestDist) {
-                closestDist = dist;
-                closestPos = absolutePos;
+            if (relativeX < midPoint) {
+                right = mid;
+            } else {
+                left = mid + 1;
             }
         }
         
-        return closestPos;
+        return m_viewportOffset + left;
     }
     
+   
+    private int estimateCursorPositionLinear(double x) {
+
+        String visibleText = m_renderCache.visibleText;
+        
+        if (visibleText.isEmpty()) {
+            return m_viewportOffset;
+        }
+    
+        double relativeX = x - m_renderCache.textX;
+
+        // Get or compute glyph boundaries
+        double[] boundaries = m_renderCache.glyphBoundaries;
+        int codePointCount = m_renderCache.visibleCodePointCount;
+    
+
+        // Early exits
+        if (relativeX <= boundaries[0]) {
+            return m_viewportOffset;
+        }
+        if (relativeX >= boundaries[codePointCount]) {
+            return m_viewportOffset + codePointCount;
+        }
+
+        // Linear search: find first boundary where midpoint > relativeX
+        for (int i = 0; i < codePointCount; i++) {
+            double midPoint = (boundaries[i] + boundaries[i + 1]) / 2.0;
+            if (relativeX < midPoint) {
+                return m_viewportOffset + i;
+            }
+        }
+
+        return m_viewportOffset + codePointCount;
+    }
+
     // ========== Public API ==========
     
     public String getText() {
         return m_text.toString();
     }
     
+    /**
+     * Update setText to invalidate cache
+     */
     public void setText(String newText) {
         m_text = new NoteIntegerArray(newText);
         m_cursorPosition = m_text.length();
         m_viewportOffset = 0;
         m_scrollOffset = 0;
         clearSelection();
+        invalidateRenderCache();
         requestRender();
     }
     
@@ -888,6 +1137,7 @@ public class BufferedTextField extends BufferedCanvasView {
         m_viewportOffset = 0;
         m_scrollOffset = 0;
         clearSelection();
+        invalidateRenderCache();
         requestRender();
     }
     
@@ -939,20 +1189,141 @@ public class BufferedTextField extends BufferedCanvasView {
     }
     
     // ========== Configuration ==========
-    
-    public void setFieldWidth(int width) {
-        m_fieldWidth = width;
-        requestRender();
+    public void setPrefHeight(double height){
+        setPrefHeight(height, true);
     }
     
-    public void setFieldHeight(int height) {
-        m_fieldHeight = height;
-        requestRender();
+    public void setPrefHeight(double height, boolean render) {
+        m_preferredHeight = (int) Math.ceil(height);
+        invalidateRenderCache();
+        updateViewPortHeight(render);
+    }
+
+    public void setPrefWidth(double width){
+        setPrefWidth(width, true);
+    }
+    
+    public void setPrefWidth(double width, boolean render) {
+        int val = (int) Math.ceil(width);
+        m_preferredWidth = val;
+        invalidateRenderCache();
+        updateViewPortWidth(render);
+    }
+
+    private void updateViewPortHeight(boolean render){
+        int clamped = (int) Math.max(m_minHeight, Math.min(m_preferredHeight, m_maxHeight));
+        int prevHeight = m_viewportHeight;
+        m_viewportHeight = clamped;
+        if(render && prevHeight != m_viewportHeight){
+            requestRender();
+        }
+    }
+
+    /**
+     * Update viewport width with hysteresis to prevent frequent resizing
+     * while allowing shrinking for memory efficiency.
+     * 
+     * Optimized for GraphicsContextPool reuse (50px tolerance).
+     */
+    private void updateViewPortWidth(boolean render) {
+        int clamped = (int) Math.max(m_minWidth, Math.min(m_preferredWidth, m_maxWidth));
+        int prevWidth = m_viewportWidth;
+        
+        // Round clamped size to pool tolerance first
+        int roundedClamped = ((clamped + 25) / 50) * 50;
+        // Calculate target viewport size with buffer
+        int targetViewport = roundedClamped + VIEWPORT_BUFFER;
+        
+        // Grow immediately if we need more space
+        if (clamped > m_viewportWidth - VIEWPORT_BUFFER) {
+            m_viewportWidth = targetViewport;
+        }
+        // Shrink only if we have significant excess (2x buffer = 200px)
+        // This provides hysteresis to prevent oscillation
+        else if (targetViewport < m_viewportWidth - (2 * VIEWPORT_BUFFER)) {
+            m_viewportWidth = targetViewport;
+        }
+  
+        // Only re-render if dimensions actually changed
+        if (render && prevWidth != m_viewportWidth) {
+            requestRender();
+        }
+    }
+
+    public void setPreferredSize(double width, double height) {
+        setPreferredSize(width, height, true);
+    }
+
+    public void setPreferredSize(double width, double height, boolean render) {
+        setPrefWidth(width, false);
+        setPrefHeight(height, render);
+    }
+
+    public void setMinWidth(double minWidth) {
+        setMinWidth(minWidth, true);
+    }
+
+    public void setMinWidth(double minWidth, boolean render) {
+        m_minWidth = (int) Math.max(0, Math.min(Integer.MAX_VALUE, Math.ceil(minWidth)));
+        updateViewPortWidth(render);
+    }
+
+    public void setMaxWidth(double maxWidth){
+        setMaxWidth(maxWidth, true);
+    }
+    
+    public void setMaxWidth(double maxWidth, boolean render) {
+        m_maxWidth = (int) Math.max(0, Math.min(Integer.MAX_VALUE, Math.ceil(maxWidth)));
+        updateViewPortWidth(render);
+    }
+    public void setMaxHeight(double maxHeight){
+        setMaxHeight(maxHeight, true);
+    }
+    public void setMaxHeight(double maxHeight, boolean render) {
+        m_maxHeight = (int) Math.max(0, Math.min(Integer.MAX_VALUE, Math.ceil(maxHeight)));
+        updateViewPortHeight(render);
+    }
+
+    public void setMinHeight(double minHeight){
+        setMinHeight(minHeight, true);
+    }
+
+    public void setMinHeight(double minHeight, boolean render) {
+        m_minHeight = (int) Math.max(0, Math.min(Integer.MAX_VALUE, Math.ceil(minHeight)));
+        updateViewPortHeight(render);
+    }
+    
+    public void setSizeMode(SizeMode mode) {
+        setSizeMode(mode, true);
+    }
+
+    public void setSizeMode(SizeMode mode, boolean render) {
+        m_sizeMode = mode;
+        setupLayoutListeners();
+        updateViewPortWidth(false);
+        updateViewPortHeight(render);
+    }
+    
+
+    
+    public int getPreferredWidth() {
+        return m_preferredWidth;
+    }
+    
+    public int getPreferredHeight() {
+        return m_preferredHeight;
+    }
+    
+    public SizeMode getSizeMode() {
+        return m_sizeMode;
     }
     
     public void setFont(Font font) {
         m_font = font;
-        m_cachedFontMetrics = null; // Will be refreshed from global cache on next render
+        invalidateRenderCache();
+        if(!isVgrow() && m_sizeMode != SizeMode.FIXED){
+            updateHeightFromFont();
+        }
         requestRender();
     }
     
@@ -961,10 +1332,11 @@ public class BufferedTextField extends BufferedCanvasView {
         requestRender();
     }
     
-    public void setTextPosition(TextPosition position) {
-        m_textPosition = position;
+    public void setTextPosition(TextAlignment alignment) {
+        m_textAlignment = alignment;
         m_viewportOffset = 0;
         m_scrollOffset = 0;
+        invalidateRenderCache();
         requestRender();
     }
     
@@ -1001,8 +1373,8 @@ public class BufferedTextField extends BufferedCanvasView {
         m_inputMask = mask;
     }
     
-    public TextPosition getTextPosition() {
-        return m_textPosition;
+    public TextAlignment getTextAlignment() {
+        return m_textAlignment;
     }
     
     public Font getFont() {
@@ -1065,16 +1437,13 @@ public class BufferedTextField extends BufferedCanvasView {
     
     // ========== Cleanup ==========
     
-    @Override
     public void shutdown() {
         // Stop cursor timeline
         if (m_cursorTimeline != null) {
             m_cursorTimeline.stop();
-            m_cursorTimeline = null;
         }
         
-        // Clear cached references (global cache handles actual font metrics)
-        m_cachedFontMetrics = null;
+        invalidateRenderCache();
         
         // Clear references
         m_text = null;

@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display;
+package io.netnotes.gui.fx.input;
 
 import java.math.BigDecimal;
 
@@ -7,7 +7,6 @@ import javafx.animation.PauseTransition;
 import javafx.beans.binding.Binding;
 import javafx.beans.binding.Bindings;
 import javafx.beans.value.ChangeListener;
-
 import javafx.geometry.Point2D;
 
 import javafx.scene.Scene;
@@ -19,9 +18,7 @@ import javafx.scene.layout.Region;
 import javafx.stage.Window;
 
 public class InputHelpers {
-
-
-
+    
     
     public static int getIntFromField(TextField field){
         return field == null ? 0 : isTextZero(field.getText()) ? 0 :  Integer.parseInt(formatStringToNumber(field.getText(), 0));
