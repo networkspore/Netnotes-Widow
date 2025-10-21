@@ -9,7 +9,7 @@ import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.gui.fx.components.images.effects.ImageEffects;
 import io.netnotes.gui.fx.utils.TaskUtils;
 import io.netnotes.gui.fx.components.images.scaling.ScalingUtils;
-import io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm;
+import io.netnotes.gui.fx.components.images.scaling.ScalingUtils.ScalingAlgorithm;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;

@@ -27,6 +27,7 @@ import javax.imageio.ImageWriter;
 
 import io.netnotes.engine.utils.HashData;
 import io.netnotes.gui.fx.components.images.scaling.ScalingUtils;
+import io.netnotes.gui.fx.components.images.scaling.ScalingUtils.ScalingAlgorithm;
 import javafx.concurrent.WorkerStateEvent;
 import javafx.embed.swing.SwingFXUtils;
 import javafx.event.EventHandler;
@@ -40,25 +41,33 @@ public class ImageHelpers {
 
     public final static int EMPTY_ARGB = 0x00000000;
     public static final String UNKNWON_IMG_URL = "/assets/unknown-unit.png";
-    /**
-     * Scaling algorithm enumeration
-     */
-    public enum ScalingAlgorithm {
-        NEAREST_NEIGHBOR,
-        BILINEAR,
-        BICUBIC,
-        AREA_AVERAGING,
-        LANCZOS,
-        MITCHELL_NETRAVALI
-    }
 
-    public static class ImageEncoding {
-        public static final String PNG = "png";
-        public static final String JPG = "jpg";
-        public static final String JPEG = "jpeg";
-        public static final String BMP = "bmp";
-        public static final String GIF = "gif";
+
+      // Optional: Convenience enum if you want to use typed results
+    public enum ImageFormat {
+        JPG("jpg"), JP2("jp2"), J2K("j2k"), PNG("png"), GIF("gif"), BMP("bmp"), 
+        ICO("ico"), CUR("cur"), TIFF("tiff"), WEBP("webp"), PSD("psd"), DDS("dds"), 
+        ICNS("icns"), EXR("exr"), HDR("hdr"), EPS("eps"), SGI("sgi"), RAS("ras"), 
+        FPX("fpx"), PBM("pbm"), PGM("pgm"), PPM("ppm"), FITS("fits"), GBR("gbr"), 
+        IFF("iff"), WBMP("wbmp"), DCM("dcm"), TGA("tga"), UNKNOWN("tmp");
+            
+        private final String value;
+        
+        ImageFormat(String value) { this.value = value; }
+        public String getValue() { return value; }
+        
+        public static ImageFormat fromValue(String value) {
+            for (ImageFormat type : values()) {
+                if (type.value == value) return type;
+            }
+            return UNKNOWN;
+        }
+
+        public String toString(){
+            return getValue();
+        }
     }
+    
 
 
     
@@ -113,15 +122,19 @@ public class ImageHelpers {
          return null;
     }
 
-     public static CompletableFuture<Image> getImageFromBytes(byte[] bytes, ExecutorService execService, EventHandler<WorkerStateEvent> onSucceeded, EventHandler<WorkerStateEvent> onFailed){
+     public static CompletableFuture<Image> decodeImage(byte[] bytes, ExecutorService execService, EventHandler<WorkerStateEvent> onSucceeded, EventHandler<WorkerStateEvent> onFailed){
         return CompletableFuture.supplyAsync(()->{
             return new Image (new ByteArrayInputStream(bytes));
         });
     }
 
+     public static byte[] encodeImage(BufferedImage bufferedImage, String encoding) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(bufferedImage, "png", baos);
+        return baos.toByteArray();
+    }
 
-
-    public static byte[] getImageAsEncodedBytes(Image fxImage, String encoding) throws IOException {
+    public static byte[] encodeImage(Image fxImage, String encoding) throws IOException {
         BufferedImage bufferedImage = SwingFXUtils.fromFXImage(fxImage, null);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ImageIO.write(bufferedImage, "png", baos);
@@ -1511,5 +1524,158 @@ public class ImageHelpers {
         g2d.dispose();
 
         return SwingFXUtils.toFXImage(img, null);
+    }
+
+
+
+    public static String detectImageFormat(byte[] bytes) {
+        if (bytes == null || bytes.length < 4)
+            return null;
+
+        // --- JPEG ---
+        if (startsWith(bytes, 0xFF, 0xD8, 0xFF))
+            return "jpg";
+
+        // --- JPEG 2000 JP2 ---
+        if (startsWith(bytes, 0x00, 0x00, 0x00, 0x0C, 0x6A, 0x50, 0x20, 0x20))
+            return "jp2";
+
+        // --- JPEG 2000 Codestream ---
+        if (startsWith(bytes, 0xFF, 0x4F, 0xFF, 0x51))
+            return "j2k";
+
+        // --- PNG ---
+        if (startsWith(bytes, 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+            return "png";
+
+        // --- GIF87a / GIF89a ---
+        if (startsWith(bytes, 'G', 'I', 'F', '8', '7', 'a') ||
+            startsWith(bytes, 'G', 'I', 'F', '8', '9', 'a'))
+            return "gif";
+
+        // --- BMP / DIB ---
+        if (startsWith(bytes, 'B', 'M'))
+            return "bmp";
+
+        // --- ICO ---
+        if (startsWith(bytes, 0x00, 0x00, 0x01, 0x00))
+            return "ico";
+
+        // --- CUR ---
+        if (startsWith(bytes, 0x00, 0x00, 0x02, 0x00))
+            return "cur";
+
+        // --- TIFF (II*) / (MM*) ---
+        if (startsWith(bytes, 'I', 'I', 0x2A, 0x00) || startsWith(bytes, 'M', 'M', 0x00, 0x2A))
+            return "tiff";
+
+        // --- WEBP (RIFF....WEBP) ---
+        if (bytes.length >= 12 &&
+            bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F' &&
+            bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P')
+            return "webp";
+
+        // --- PSD (Photoshop) ---
+        if (startsWith(bytes, '8', 'B', 'P', 'S'))
+            return "psd";
+
+        // --- DDS (DirectDraw Surface) ---
+        if (startsWith(bytes, 'D', 'D', 'S', ' '))
+            return "dds";
+
+        // --- ICNS (macOS icon) ---
+        if (startsWith(bytes, 'i', 'c', 'n', 's'))
+            return "icns";
+
+        // --- EXR (OpenEXR) ---
+        if (startsWith(bytes, 0x76, 0x2F, 0x31, 0x01))
+            return "exr";
+
+        // --- HDR (Radiance) ---
+        if (startsWith(bytes, '#', '?', 'R', 'A', 'D', 'I', 'A', 'N', 'C', 'E'))
+            return "hdr";
+
+        // --- EPS ---
+        if (startsWith(bytes, '%', '!', 'P', 'S'))
+            return "eps";
+
+        // --- SGI (RGB) ---
+        if (startsWith(bytes, 0x01, 0xDA))
+            return "sgi";
+
+        // --- SUN Raster ---
+        if (startsWith(bytes, 0x59, 0xA6, 0x6A, 0x95))
+            return "ras";
+
+        // --- FPX (FlashPix / OLE Compound) ---
+        if (startsWith(bytes, 0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1))
+            return "fpx";
+
+        // --- PBM/PGM/PPM (NetPBM ASCII/Binary) ---
+        if (bytes[0] == 'P' && bytes.length > 1 && bytes[1] >= '1' && bytes[1] <= '6')
+            return switch (bytes[1]) {
+                case '1', '4' -> "pbm";
+                case '2', '5' -> "pgm";
+                case '3', '6' -> "ppm";
+                default -> null;
+            };
+
+        // --- FITS (Flexible Image Transport System) ---
+        if (startsWithAscii(bytes, "SIMPLE"))
+            return "fits";
+
+        // --- GBM Brush (GIMP Brush) ---
+        if (startsWithAscii(bytes, "GIMP"))
+            return "gbr";
+
+        // --- IFF / ILBM (Amiga) ---
+        if (startsWith(bytes, 'F', 'O', 'R', 'M'))
+            return "iff";
+
+        // --- WBMP (Wireless Bitmap) ---
+        if (startsWith(bytes, 0x00, 0x00))
+            return "wbmp";
+
+        // --- DICOM ---
+        if (bytes.length >= 132 &&
+            bytes[128] == 'D' && bytes[129] == 'I' && bytes[130] == 'C' && bytes[131] == 'M')
+            return "dcm";
+
+        // --- TGA ---
+        if (bytes.length > 20 && endsWithAscii(bytes, "TRUEVISION-XFILE."))
+            return "tga";
+
+        // --- Unknown ---
+        return null;
+    }
+
+    private static boolean startsWith(byte[] bytes, int... sig) {
+        if (bytes.length < sig.length)
+            return false;
+        for (int i = 0; i < sig.length; i++) {
+            if ((bytes[i] & 0xFF) != (sig[i] & 0xFF))
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean startsWithAscii(byte[] bytes, String text) {
+        if (bytes.length < text.length())
+            return false;
+        for (int i = 0; i < text.length(); i++) {
+            if (bytes[i] != (byte) text.charAt(i))
+                return false;
+        }
+        return true;
+    }
+
+    private static boolean endsWithAscii(byte[] bytes, String text) {
+        if (bytes.length < text.length())
+            return false;
+        for (int i = 0; i < text.length(); i++) {
+            if (bytes[bytes.length - text.length() + i] != (byte) text.charAt(i))
+                return false;
+        }
+        return true;
     }
 }

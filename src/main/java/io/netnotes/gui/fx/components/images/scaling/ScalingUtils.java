@@ -5,10 +5,80 @@ import java.awt.image.BufferedImage;
 import java.math.BigDecimal;
 
 import io.netnotes.engine.utils.MathHelpers;
-import io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm;
-
 public class ScalingUtils {
     public static final BigDecimal halfThreshold = new BigDecimal("0.5");
+
+    public enum ScalingAlgorithm {
+        BILINEAR(0),
+        NEAREST_NEIGHBOR(1),
+        BICUBIC(2),
+        AREA_AVERAGING(3),
+        LANCZOS(4),
+        MITCHELL_NETRAVALI(5);
+        
+        private final int value;
+        
+        ScalingAlgorithm(int value) { this.value = value; }
+        public int getValue() { return value; }
+        
+        public static ScalingAlgorithm fromValue(int value) {
+            for (ScalingAlgorithm alg : values()) {
+                if (alg.value == value) return alg;
+            }
+            return BILINEAR; // Default
+        }
+    }
+
+    public static BufferedImage scaleImage(BufferedImage src, int x1, int y1, int x2, int y2, 
+        int targetWidth, int targetHeight, ScalingAlgorithm algorithm
+    ) {
+        
+        targetWidth = Math.max(targetWidth, 1);
+        targetHeight = Math.max(targetHeight, 1);
+    
+        switch (algorithm) {
+            case NEAREST_NEIGHBOR:
+                return NearestNeighborScaling.scaleNearestNeighborCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
+            case BICUBIC:
+                return BicubicScaling.scaleBicubicCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
+            case AREA_AVERAGING:
+                return AreaAverageScaling.scaleAreaAveraging(src, x1, y1, x2, y2, targetWidth, targetHeight);
+            case LANCZOS:
+                return LanczosScaling.scaleLanczosCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
+            case MITCHELL_NETRAVALI:
+                return MitchellScaling.scaleMitchellCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
+            case BILINEAR:
+            default:
+                return BilinearScaling.scaleBilinearCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
+        }
+    }
+
+    /**
+     * Scale image using specified algorithm with quality control
+     */
+    public static BufferedImage scaleImage(BufferedImage src, int targetWidth, int targetHeight, 
+        ScalingAlgorithm algorithm
+    ) {
+        if (src == null || targetWidth <= 0 || targetHeight <= 0) {
+            throw new IllegalArgumentException("Invalid source image or dimensions");
+        }
+
+        switch (algorithm) {
+            case NEAREST_NEIGHBOR:
+                return NearestNeighborScaling.scaleNearestNeighbor(src, targetWidth, targetHeight);
+            case BICUBIC:
+                return BicubicScaling.scaleBicubic(src, targetWidth, targetHeight);
+            case AREA_AVERAGING:
+                return AreaAverageScaling.scaleAreaAveraging(src, targetWidth, targetHeight);
+            case LANCZOS:
+                return LanczosScaling.scaleLanczos(src, targetWidth, targetHeight);
+            case MITCHELL_NETRAVALI:
+                return MitchellScaling.scaleMitchell(src, targetWidth, targetHeight);
+            case BILINEAR:
+            default:
+                return BilinearScaling.scaleBilinear(src, targetWidth, targetHeight);
+        }
+    }
 
     public static BufferedImage scaleProgressiveCrop(
         BufferedImage src,
@@ -79,7 +149,7 @@ public class ScalingUtils {
      * Progressive scaling for large size differences - better quality
      */
     public static BufferedImage scaleProgressive(BufferedImage src, int targetWidth, int targetHeight, 
-                                            io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm algorithm) {
+        ScalingAlgorithm algorithm) {
         int srcWidth = src.getWidth();
         int srcHeight = src.getHeight();
         
@@ -104,7 +174,8 @@ public class ScalingUtils {
      * Scale to fit within bounds while maintaining aspect ratio
      */
     public static BufferedImage scaleToFit(BufferedImage src, int maxWidth, int maxHeight, 
-                                        io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm algorithm) {
+        ScalingAlgorithm algorithm
+    ) {
         return ScalingUtils.scaleWithAspectRatio(src, maxWidth, maxHeight, algorithm);
     }
 
@@ -112,7 +183,8 @@ public class ScalingUtils {
      * Scale to fill bounds (may crop) while maintaining aspect ratio
      */
     public static BufferedImage scaleToFill(BufferedImage src, int targetWidth, int targetHeight, 
-                                        io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm algorithm) {
+        ScalingAlgorithm algorithm
+    ) {
         double srcRatio = (double) src.getWidth() / src.getHeight();
         double targetRatio = (double) targetWidth / targetHeight;
         
@@ -158,7 +230,8 @@ public class ScalingUtils {
      * Scale with aspect ratio preservation
      */
     public static BufferedImage scaleWithAspectRatio(BufferedImage src, int maxWidth, int maxHeight, 
-                                                    io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm algorithm) {
+        ScalingAlgorithm algorithm
+    ) {
         Dimension scaled = ScalingUtils.getScaledDimension(
             new Dimension(src.getWidth(), src.getHeight()),
             new Dimension(maxWidth, maxHeight)
@@ -166,32 +239,7 @@ public class ScalingUtils {
         return ScalingUtils.scaleImage(src, scaled.width, scaled.height, algorithm);
     }
 
-    /**
-     * Scale image using specified algorithm with quality control
-     */
-    public static BufferedImage scaleImage(BufferedImage src, int targetWidth, int targetHeight, 
-        ScalingAlgorithm algorithm
-    ) {
-        if (src == null || targetWidth <= 0 || targetHeight <= 0) {
-            throw new IllegalArgumentException("Invalid source image or dimensions");
-        }
-        
-        switch (algorithm) {
-            case NEAREST_NEIGHBOR:
-                return NearestNeighborScaling.scaleNearestNeighbor(src, targetWidth, targetHeight);
-            case BICUBIC:
-                return BicubicScaling.scaleBicubic(src, targetWidth, targetHeight);
-            case AREA_AVERAGING:
-                return AreaAverageScaling.scaleAreaAveraging(src, targetWidth, targetHeight);
-            case LANCZOS:
-                return LanczosScaling.scaleLanczos(src, targetWidth, targetHeight);
-            case MITCHELL_NETRAVALI:
-                return MitchellScaling.scaleMitchell(src, targetWidth, targetHeight);
-            case BILINEAR:
-            default:
-                return BilinearScaling.scaleBilinear(src, targetWidth, targetHeight);
-        }
-    }
+   
 
     public static Dimension getScaledDimension(Dimension imgSize, Dimension boundary) {
         
@@ -221,28 +269,6 @@ public class ScalingUtils {
         return new Dimension(new_width, new_height);
     }
 
-    public static BufferedImage scaleImage(BufferedImage src, int x1, int y1, int x2, int y2, 
-        int targetWidth, int targetHeight, ScalingAlgorithm algorithm
-    ) {
-        
-        targetWidth = Math.max(targetWidth, 1);
-        targetHeight = Math.max(targetHeight, 1);
     
-        switch (algorithm) {
-            case NEAREST_NEIGHBOR:
-                return NearestNeighborScaling.scaleNearestNeighborCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
-            case BICUBIC:
-                return BicubicScaling.scaleBicubicCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
-            case AREA_AVERAGING:
-                return AreaAverageScaling.scaleAreaAveraging(src, x1, y1, x2, y2, targetWidth, targetHeight);
-            case LANCZOS:
-                return LanczosScaling.scaleLanczosCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
-            case MITCHELL_NETRAVALI:
-                return MitchellScaling.scaleMitchellCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
-            case BILINEAR:
-            default:
-                return BilinearScaling.scaleBilinearCrop(src, x1, y1, x2, y2, targetWidth, targetHeight);
-        }
-    }
     
 }

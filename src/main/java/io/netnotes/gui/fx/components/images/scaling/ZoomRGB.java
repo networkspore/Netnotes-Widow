@@ -9,7 +9,7 @@ import java.math.RoundingMode;
 
 import io.netnotes.engine.utils.MathHelpers;
 import io.netnotes.gui.fx.components.images.effects.ZoomEffect;
-import io.netnotes.gui.fx.display.ImageHelpers.ScalingAlgorithm;
+import io.netnotes.gui.fx.components.images.scaling.ScalingUtils.ScalingAlgorithm;
 
 public class ZoomRGB {
 
