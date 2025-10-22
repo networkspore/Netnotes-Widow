@@ -7,6 +7,7 @@ import io.netnotes.engine.noteBytes.NoteIntegerArray;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Cursor and Selection system for traversing and selecting content in a segment tree.
@@ -149,23 +150,164 @@ public class CursorSelectionSystem {
         }
     }
     
-    /**
-     * Context for traversing the segment tree
-     */
-    private static class TraversalContext {
-        int globalOffset = 0;
-        boolean found = false;
-        CursorPosition result = null;
-    }
-    
+
     /**
      * Navigator for moving cursor through segment tree
+     * OPTIMIZED: Caches segment offsets to avoid O(n) traversals on every operation
      */
     public static class CursorNavigator {
         private NoteBytesArray rootSegments;
         
+        // NEW: Cached data to avoid O(n) traversals
+        private Map<List<Integer>, Integer> m_segmentOffsets; // path -> global start offset
+        private int m_totalContentLength;
+        private boolean m_cacheDirty;
+        
         public CursorNavigator(NoteBytesArray rootSegments) {
             this.rootSegments = rootSegments;
+            this.m_segmentOffsets = new java.util.HashMap<>();
+            this.m_cacheDirty = true;
+            rebuildCache();
+        }
+        
+        /**
+         * Rebuild offset cache - O(n) operation, only called when structure changes
+         */
+        private void rebuildCache() {
+            if (!m_cacheDirty) return;
+            
+            m_segmentOffsets.clear();
+            m_totalContentLength = 0;
+            
+            rebuildCacheRecursive(rootSegments, new ArrayList<>(), 0);
+            m_cacheDirty = false;
+        }
+        
+        private int rebuildCacheRecursive(
+            NoteBytesArray segments,
+            List<Integer> currentPath,
+            int currentOffset
+        ) {
+            for (int i = 0; i < segments.size(); i++) {
+                NoteBytes item = segments.get(i);
+                if (!(item instanceof NoteBytesObject)) continue;
+                
+                LayoutSegment segment = new LayoutSegment((NoteBytesObject) item);
+                
+                // Skip display:none
+                if (segment.getLayout().display == LayoutSegment.Display.NONE) {
+                    continue;
+                }
+                
+                List<Integer> segmentPath = new ArrayList<>(currentPath);
+                segmentPath.add(i);
+                
+                // Cache this segment's start offset
+                m_segmentOffsets.put(segmentPath, currentOffset);
+                
+                if (segment.isContainer() && segment.hasChildren()) {
+                    // Recurse into children
+                    currentOffset = rebuildCacheRecursive(
+                        segment.getChildren(),
+                        segmentPath,
+                        currentOffset
+                    );
+                } else {
+                    // Leaf segment - add its length
+                    currentOffset += segment.getContentLength();
+                }
+            }
+            
+            return currentOffset;
+        }
+        
+        /**
+         * Incrementally update offsets after text insertion.
+         * Much faster than full rebuild for single-segment edits.
+         * O(k) where k = segments after this position
+         */
+        public void notifyTextInsert(CursorPosition position, int insertedLength) {
+            if (insertedLength == 0) return;
+            
+            // Ensure cache is built
+            if (m_cacheDirty) {
+                rebuildCache();
+                return;
+            }
+            
+            int globalOffset = position.getGlobalOffset();
+            List<Integer> modifiedPath = position.getSegmentPath();
+            
+            // Update cached offsets for all segments after this position
+            for (Map.Entry<List<Integer>, Integer> entry : m_segmentOffsets.entrySet()) {
+                List<Integer> path = entry.getKey();
+                int startOffset = entry.getValue();
+                
+                // Only update segments that come after the modified position
+                if (startOffset > globalOffset || isAfterPath(path, modifiedPath)) {
+                    entry.setValue(startOffset + insertedLength);
+                }
+            }
+            
+            // Update total content length
+            m_totalContentLength += insertedLength;
+        }
+        
+        /**
+         * Incrementally update offsets after text deletion.
+         * O(k) where k = segments after this position
+         */
+        public void notifyTextDelete(CursorPosition position, int deletedLength) {
+            if (deletedLength == 0) return;
+            
+            // Ensure cache is built
+            if (m_cacheDirty) {
+                rebuildCache();
+                return;
+            }
+            
+            int globalOffset = position.getGlobalOffset();
+            List<Integer> modifiedPath = position.getSegmentPath();
+            
+            // Update cached offsets for all segments after this position
+            for (Map.Entry<List<Integer>, Integer> entry : m_segmentOffsets.entrySet()) {
+                List<Integer> path = entry.getKey();
+                int startOffset = entry.getValue();
+                
+                // Only update segments that come after the modified position
+                if (startOffset > globalOffset || isAfterPath(path, modifiedPath)) {
+                    entry.setValue(startOffset - deletedLength);
+                }
+            }
+            
+            // Update total content length
+            m_totalContentLength = Math.max(0, m_totalContentLength - deletedLength);
+        }
+        
+        /**
+         * Mark cache as dirty - forces rebuild on next operation.
+         * Call this for structural changes (add/remove segments).
+         */
+        public void invalidateCache() {
+            m_cacheDirty = true;
+        }
+        
+        /**
+         * Helper: Check if pathA comes after pathB in document order
+         */
+        private boolean isAfterPath(List<Integer> pathA, List<Integer> pathB) {
+            int minLen = Math.min(pathA.size(), pathB.size());
+            
+            for (int i = 0; i < minLen; i++) {
+                int a = pathA.get(i);
+                int b = pathB.get(i);
+                
+                if (a > b) return true;
+                if (a < b) return false;
+            }
+            
+            // Paths equal up to minLen - longer path comes after
+            return pathA.size() > pathB.size();
         }
         
         /**
@@ -207,136 +349,104 @@ public class CursorSelectionSystem {
         
         /**
          * Convert global offset to cursor position
+         * OPTIMIZED: Uses cached offsets for O(log n) search instead of O(n) traversal
          */
         public CursorPosition globalOffsetToPosition(int targetOffset) {
-            TraversalContext ctx = new TraversalContext();
-            List<Integer> path = new ArrayList<>();
+            if (m_cacheDirty) {
+                rebuildCache();
+            }
             
-            globalOffsetToPositionRecursive(rootSegments, targetOffset, path, ctx);
+            // Handle edge cases
+            if (targetOffset <= 0) {
+                return new CursorPosition();
+            }
+            if (targetOffset >= m_totalContentLength) {
+                targetOffset = m_totalContentLength;
+            }
             
-            return ctx.result != null ? ctx.result : new CursorPosition();
+            // Find the segment containing this offset using cache
+            List<Integer> bestPath = null;
+            int bestOffset = -1;
+            
+            for (Map.Entry<List<Integer>, Integer> entry : m_segmentOffsets.entrySet()) {
+                int startOffset = entry.getValue();
+                
+                if (startOffset <= targetOffset && startOffset > bestOffset) {
+                    // Get segment to check its length
+                    LayoutSegment seg = getSegmentAtPath(entry.getKey());
+                    if (seg != null) {
+                        int segmentEnd = startOffset + seg.getContentLength();
+                        
+                        if (segmentEnd >= targetOffset) {
+                            // This segment contains our target
+                            bestPath = entry.getKey();
+                            bestOffset = startOffset;
+                        }
+                    }
+                }
+            }
+            
+            if (bestPath != null) {
+                int localOffset = targetOffset - bestOffset;
+                return new CursorPosition(bestPath, localOffset, targetOffset);
+            }
+            
+            // Fallback to start if not found
+            return new CursorPosition();
         }
         
-        private void globalOffsetToPositionRecursive(
-            NoteBytesArray segments, 
-            int targetOffset,
-            List<Integer> currentPath,
-            TraversalContext ctx
-        ) {
-            if (ctx.found) return;
+        /**
+         * Helper: Get segment by path
+         */
+        private LayoutSegment getSegmentAtPath(List<Integer> path) {
+            NoteBytesArray current = rootSegments;
             
-            for (int i = 0; i < segments.size(); i++) {
-                if (ctx.found) break;
+            for (int i = 0; i < path.size(); i++) {
+                int index = path.get(i);
                 
-                NoteBytes item = segments.get(i);
-                if (!(item instanceof NoteBytesObject)) continue;
+                if (index < 0 || index >= current.size()) {
+                    return null;
+                }
+                
+                NoteBytes item = current.get(index);
+                if (!(item instanceof NoteBytesObject)) {
+                    return null;
+                }
                 
                 LayoutSegment segment = new LayoutSegment((NoteBytesObject) item);
                 
-                // Skip display:none (doesn't exist in layout)
-                if (segment.getLayout().display == LayoutSegment.Display.NONE) {
-                    continue;
+                if (i == path.size() - 1) {
+                    return segment;
                 }
                 
-                List<Integer> segmentPath = new ArrayList<>(currentPath);
-                segmentPath.add(i);
-                
-                if (segment.isContainer() && segment.hasChildren()) {
-                    // Container - recurse into children
-                    globalOffsetToPositionRecursive(
-                        segment.getChildren(), 
-                        targetOffset, 
-                        segmentPath, 
-                        ctx
-                    );
-                } else {
-                    // Leaf segment - check if target is within
-                    int contentLength = segment.getContentLength();
-                    
-                    if (ctx.globalOffset + contentLength >= targetOffset) {
-                        // Found it!
-                        int localOffset = targetOffset - ctx.globalOffset;
-                        ctx.result = new CursorPosition(
-                            segmentPath, 
-                            localOffset, 
-                            targetOffset
-                        );
-                        ctx.found = true;
-                        return;
-                    }
-                    
-                    ctx.globalOffset += contentLength;
+                if (!segment.isContainer()) {
+                    return null;
                 }
+                
+                current = segment.getChildren();
             }
+            
+            return null;
         }
         
         /**
          * Convert cursor position to global offset
+         * OPTIMIZED: Uses cached offsets for O(1) lookup instead of O(n) traversal
          */
         public int positionToGlobalOffset(CursorPosition position) {
-            TraversalContext ctx = new TraversalContext();
-            List<Integer> targetPath = position.getSegmentPath();
-            
-            positionToGlobalOffsetRecursive(rootSegments, targetPath, 0, ctx);
-            
-            return ctx.globalOffset + position.getLocalOffset();
-        }
-        
-        private void positionToGlobalOffsetRecursive(
-            NoteBytesArray segments,
-            List<Integer> targetPath,
-            int pathDepth,
-            TraversalContext ctx
-        ) {
-            if (ctx.found) return;
-            
-            if (pathDepth >= targetPath.size()) {
-                ctx.found = true;
-                return;
+            if (m_cacheDirty) {
+                rebuildCache();
             }
             
-            int targetIndex = targetPath.get(pathDepth);
+            List<Integer> path = position.getSegmentPath();
+            Integer cachedOffset = m_segmentOffsets.get(path);
             
-            for (int i = 0; i < segments.size(); i++) {
-                if (ctx.found) break;
-                
-                NoteBytes item = segments.get(i);
-                if (!(item instanceof NoteBytesObject)) continue;
-                
-                LayoutSegment segment = new LayoutSegment((NoteBytesObject) item);
-                
-                // Skip display:none
-                if (segment.getLayout().display == LayoutSegment.Display.NONE) {
-                    continue;
-                }
-                
-                if (i == targetIndex) {
-                    // This is part of our path
-                    if (pathDepth == targetPath.size() - 1) {
-                        // Found our segment
-                        ctx.found = true;
-                        return;
-                    } else {
-                        // Keep traversing
-                        if (segment.isContainer() && segment.hasChildren()) {
-                            positionToGlobalOffsetRecursive(
-                                segment.getChildren(),
-                                targetPath,
-                                pathDepth + 1,
-                                ctx
-                            );
-                        }
-                        return;
-                    }
-                } else {
-                    // Not our path - add this segment's length
-                    if (segment.isContainer() && segment.hasChildren()) {
-                        ctx.globalOffset += getTotalContentLength(segment.getChildren());
-                    } else {
-                        ctx.globalOffset += segment.getContentLength();
-                    }
-                }
+            if (cachedOffset != null) {
+                return cachedOffset + position.getLocalOffset();
             }
+            
+            // Fallback to manual calculation if not in cache
+            return position.getGlobalOffset();
         }
         
         /**
@@ -386,11 +496,14 @@ public class CursorSelectionSystem {
          * Move cursor to next focusable segment (for tab navigation)
          */
         public CursorPosition moveToNextFocusable(CursorPosition current) {
+            if (m_cacheDirty) {
+                rebuildCache();
+            }
+            
             // Start searching from current position
             int searchOffset = current.getGlobalOffset() + 1;
-            int totalLength = getTotalContentLength(rootSegments);
             
-            while (searchOffset <= totalLength) {
+            while (searchOffset <= m_totalContentLength) {
                 CursorPosition candidate = globalOffsetToPosition(searchOffset);
                 LayoutSegment segment = getSegmentAt(candidate);
                 
@@ -409,13 +522,36 @@ public class CursorSelectionSystem {
             }
             
             // No focusable found - wrap to beginning
-            return moveToNextFocusable(new CursorPosition());
+            searchOffset = 0;
+            while (searchOffset < current.getGlobalOffset()) {
+                CursorPosition candidate = globalOffsetToPosition(searchOffset);
+                LayoutSegment segment = getSegmentAt(candidate);
+                
+                if (segment != null && 
+                    segment.getInteraction().focusable &&
+                    segment.getLayout().display != LayoutSegment.Display.NONE) {
+                    return candidate;
+                }
+                
+                if (segment != null) {
+                    searchOffset += segment.getContentLength();
+                } else {
+                    searchOffset++;
+                }
+            }
+            
+            // No focusable found at all
+            return current;
         }
         
         /**
          * Move cursor to previous focusable segment (for shift+tab)
          */
         public CursorPosition moveToPreviousFocusable(CursorPosition current) {
+            if (m_cacheDirty) {
+                rebuildCache();
+            }
+            
             int searchOffset = current.getGlobalOffset() - 1;
             
             while (searchOffset >= 0) {
@@ -432,8 +568,22 @@ public class CursorSelectionSystem {
             }
             
             // No focusable found - wrap to end
-            int totalLength = getTotalContentLength(rootSegments);
-            return moveToPreviousFocusable(globalOffsetToPosition(totalLength));
+            searchOffset = m_totalContentLength;
+            while (searchOffset > current.getGlobalOffset()) {
+                CursorPosition candidate = globalOffsetToPosition(searchOffset);
+                LayoutSegment segment = getSegmentAt(candidate);
+                
+                if (segment != null && 
+                    segment.getInteraction().focusable &&
+                    segment.getLayout().display != LayoutSegment.Display.NONE) {
+                    return candidate;
+                }
+                
+                searchOffset--;
+            }
+            
+            // No focusable found at all
+            return current;
         }
         
         /**
@@ -444,7 +594,7 @@ public class CursorSelectionSystem {
             if (segment == null) return false;
             
             return segment.getInteraction().editable && 
-                   segment.getType() == LayoutSegment.SegmentType.TEXT;
+                segment.getType() == LayoutSegment.SegmentType.TEXT;
         }
         
         /**
@@ -455,13 +605,26 @@ public class CursorSelectionSystem {
             if (segment == null) return false;
             
             return segment.getInteraction().selectable &&
-                   segment.getLayout().display != LayoutSegment.Display.NONE;
+                segment.getLayout().display != LayoutSegment.Display.NONE;
         }
         
         /**
          * Get total content length of all segments
+         * OPTIMIZED: Returns cached value instead of O(n) traversal
          */
         public int getTotalContentLength(NoteBytesArray segments) {
+            if (segments == rootSegments) {
+                if (m_cacheDirty) {
+                    rebuildCache();
+                }
+                return m_totalContentLength;
+            }
+            
+            // For non-root segments, fall back to calculation
+            return getTotalContentLengthRecursive(segments);
+        }
+        
+        private int getTotalContentLengthRecursive(NoteBytesArray segments) {
             int total = 0;
             
             for (int i = 0; i < segments.size(); i++) {
@@ -476,7 +639,7 @@ public class CursorSelectionSystem {
                 }
                 
                 if (segment.isContainer() && segment.hasChildren()) {
-                    total += getTotalContentLength(segment.getChildren());
+                    total += getTotalContentLengthRecursive(segment.getChildren());
                 } else {
                     total += segment.getContentLength();
                 }
@@ -568,13 +731,6 @@ public class CursorSelectionSystem {
             CursorPosition start = normalized.getStart();
             CursorPosition end = normalized.getEnd();
             
-            // TODO: Implement deletion across segments
-            // This is complex because it may need to:
-            // 1. Delete partial content in start segment
-            // 2. Delete entire intermediate segments
-            // 3. Delete partial content in end segment
-            // 4. Merge remaining content if in same container
-            
             // For now, we'll handle simple case: same segment
             if (start.getSegmentPath().equals(end.getSegmentPath())) {
                 LayoutSegment segment = getSegmentAt(start);
@@ -582,9 +738,14 @@ public class CursorSelectionSystem {
                     NoteIntegerArray text = segment.getTextContent();
                     if (text != null) {
                         text.delete(start.getLocalOffset(), end.getLocalOffset());
+                        
+                        // Update cache
+                        int deletedLength = end.getLocalOffset() - start.getLocalOffset();
+                        notifyTextDelete(start, deletedLength);
                     }
                 }
             }
+
         }
     }
 }

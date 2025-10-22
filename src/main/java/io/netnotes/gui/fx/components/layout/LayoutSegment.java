@@ -686,7 +686,7 @@ public class LayoutSegment {
             throw new IllegalStateException("Binary content can only be set on IMAGE segments");
         }
         m_binaryContent = content;
-        rebuildData();
+        m_dataDirty = true; 
     }
     
     public void setBinaryContent(byte[] data) {
@@ -707,7 +707,7 @@ public class LayoutSegment {
             m_textContent = new NoteIntegerArray();
         }
         m_textContent.set(text);
-        m_dataDirty = true; // Don't rebuild yet
+        m_dataDirty = true;
     }
     
     public void setTextContent(NoteIntegerArray content) {
@@ -715,7 +715,7 @@ public class LayoutSegment {
             throw new IllegalStateException("Text content can only be set on TEXT segments");
         }
         m_textContent = content;
-        rebuildData();
+        m_dataDirty = true;
     }
     
     // ========== Utility Methods ==========
@@ -738,7 +738,7 @@ public class LayoutSegment {
             m_children = new NoteBytesArray();
         }
         m_children.add(child.getData());
-        rebuildData();
+        m_dataDirty = true; 
     }
     
     public void addChild(int index, LayoutSegment child) {

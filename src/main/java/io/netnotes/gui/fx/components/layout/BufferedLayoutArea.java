@@ -60,7 +60,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     
     private LayoutEngine.LayoutResult m_layoutResult;
     private boolean m_layoutDirty;
-    
+
     // ========== Cursor & Selection ==========
     
     private CursorSelectionSystem.CursorPosition m_cursor;
@@ -362,15 +362,14 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         // Render layout tree with virtual scrolling
         if (m_layoutResult != null) {
-            renderLayoutResultVirtual(g2d, m_layoutResult, 
-                                     paddingLeft - m_scrollX, 
-                                     paddingTop - m_scrollY,
-                                     visibleTop, visibleBottom, 
-                                     visibleLeft, visibleRight,
-                                     false, 0, 0); // No selection in content layer
+            // No selection in content layer
+            renderLayoutResultVirtual(g2d, m_layoutResult, paddingLeft - m_scrollX, paddingTop - m_scrollY,
+                visibleTop, visibleBottom, visibleLeft, visibleRight,false, 0, 0); 
         }
         
         g2d.setClip(null);
+        m_lastRenderScrollX = m_scrollX;
+        m_lastRenderScrollY = m_scrollY;
     }
     
 
@@ -430,24 +429,27 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         int segStart = result.globalStartOffset;
         int segEnd = result.globalEndOffset;
         
-        // Quick range check using pre-computed offsets
-        boolean isInRange = !(selEnd <= segStart || selStart >= segEnd);
-        
-        if (isInRange) {
-            // Render selection for this segment
-            if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
-                renderTextSelection(g2d, result, offsetX, offsetY, selStart, selEnd);
-            } else {
-                // Non-text segment - highlight entire bounds
-                g2d.setColor(m_selectionColor);
-                g2d.fillRect(
-                    bounds.x + offsetX,
-                    bounds.y + offsetY,
-                    bounds.width,
-                    bounds.height
-                );
-            }
+        boolean notInRange = segEnd <= selStart || segStart >= selEnd;
+        if (notInRange) {
+            // This segment and ALL its children are outside selection range
+            return; // Don't recurse to children
         }
+
+        
+        // Render selection for this segment
+        if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
+            renderTextSelection(g2d, result, offsetX, offsetY, selStart, selEnd);
+        } else {
+            // Non-text segment - highlight entire bounds
+            g2d.setColor(m_selectionColor);
+            g2d.fillRect(
+                bounds.x + offsetX,
+                bounds.y + offsetY,
+                bounds.width,
+                bounds.height
+            );
+        }
+    
         
         // Recurse to children
         for (LayoutEngine.LayoutResult child : result.children) {
@@ -514,8 +516,6 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         // Generate cache key based on content + constraints
         String layoutKey = generateLayoutKey(m_segments, availableWidth, availableHeight);
-        
-        // Try cache first
         LayoutEngine.LayoutResult cached = m_resourceManager.getLayout(layoutKey);
         if (cached != null) {
             m_layoutResult = cached;
@@ -558,86 +558,6 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     
     // ========== Rendering ==========
  
-    private void renderLayoutResult(Graphics2D g2d, LayoutEngine.LayoutResult result, 
-                                   int offsetX, int offsetY,
-                                   boolean hasSelection, int selStart, int selEnd,
-                                   CursorSelectionSystem.Selection normalizedSelection) {
-        LayoutSegment segment = result.segment;
-        Rectangle bounds = result.bounds;
-        
-        // Skip if display:none
-        if (segment.getLayout().display == LayoutSegment.Display.NONE) {
-            return;
-        }
-        
-        int x = bounds.x + offsetX;
-        int y = bounds.y + offsetY;
-        int w = bounds.width;
-        int h = bounds.height;
-        
-        // Skip if outside viewport
-        if (x + w < 0 || y + h < 0 || 
-            x > m_preferredWidth || y > m_preferredHeight) {
-            return;
-        }
-        
-        // Render background
-        if (segment.getLayout().backgroundColor != null) {
-            g2d.setColor(segment.getLayout().backgroundColor);
-            g2d.fillRect(x, y, w, h);
-        }
-        
-        // Render border
-        if (segment.getLayout().borderWidth > 0 && segment.getLayout().borderColor != null) {
-            g2d.setColor(segment.getLayout().borderColor);
-            g2d.setStroke(new BasicStroke(segment.getLayout().borderWidth));
-            g2d.drawRect(x, y, w, h);
-        }
-        
-        // Render selection ONLY if hasSelection is true (for content layer, it's false)
-        if (hasSelection) {
-            int segStart = result.globalStartOffset;
-            int segEnd = result.globalEndOffset;
-            boolean isInRange = !(selEnd <= segStart || selStart >= segEnd);
-            
-            if (isInRange) {
-                if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
-                    renderTextSelection(g2d, result, offsetX, offsetY, selStart, selEnd);
-                } else {
-                    g2d.setColor(m_selectionColor);
-                    g2d.fillRect(x, y, w, h);
-                }
-            }
-        }
-        
-        // Render content (skip if display:hidden)
-        if (segment.getLayout().display != LayoutSegment.Display.HIDDEN) {
-            switch (segment.getType()) {
-                case TEXT:
-                    renderTextWithWrapping(g2d, segment, bounds, offsetX, offsetY);
-                    break;
-                    
-                case IMAGE:
-                    renderImage(g2d, segment, bounds, offsetX, offsetY);
-                    break;
-                    
-                case SPACER:
-                    // Nothing to render
-                    break;
-                    
-                default:
-                    break;
-            }
-        }
-        
-        // Render children
-        for (LayoutEngine.LayoutResult child : result.children) {
-            renderLayoutResult(g2d, child, offsetX, offsetY, 
-                             hasSelection, selStart, selEnd, normalizedSelection);
-        }
-    }
-
-
     /**
      * IMPROVED: Render text with proper word wrapping
      */
@@ -882,50 +802,6 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         return !(selEnd <= segStart || selStart >= segEnd);
     }*/
     
-    private void renderSelection(Graphics2D g2d, LayoutEngine.LayoutResult result, int offsetX, int offsetY, int selStart, int selEnd) {
-
-        int segStart = result.globalStartOffset;
-       // int segEnd = result.globalEndOffset;
-        
-        Rectangle bounds = result.bounds;
-        
-        // For text segments, highlight the selected portion
-        if (result.segment.getType() == LayoutSegment.SegmentType.TEXT) {
-            NoteIntegerArray text = result.segment.getTextContent();
-            if (text != null && text.length() > 0) {
-                String str = text.toString();
-                Font font = result.segment.getStyle().getFont();
-                
-                int localStart = Math.max(0, selStart - segStart);
-                int localEnd = Math.min(str.length(), selEnd - segStart);
-                
-                if (localEnd > localStart) {
-                    String beforeSel = str.substring(0, localStart);
-                    String selected = str.substring(localStart, localEnd);
-                    
-                    int beforeWidth = m_textRenderer.getTextWidth(beforeSel, font);
-                    int selWidth = m_textRenderer.getTextWidth(selected, font);
-                    
-                    int x = bounds.x + offsetX + result.segment.getLayout().padding.left + beforeWidth;
-                    int y = bounds.y + offsetY + result.segment.getLayout().padding.top;
-                    int h = bounds.height - result.segment.getLayout().padding.top -
-                            result.segment.getLayout().padding.bottom;
-                    
-                    g2d.setColor(m_selectionColor);
-                    g2d.fillRect(x, y, selWidth, h);
-                }
-            }
-        } else {
-            // Non-text segment - highlight entire bounds
-            g2d.setColor(m_selectionColor);
-            g2d.fillRect(
-                bounds.x + offsetX,
-                bounds.y + offsetY,
-                bounds.width,
-                bounds.height
-            );
-        }
-    }
     
     private void renderCursor(Graphics2D g2d, int offsetX, int offsetY) {
         if (m_layoutResult == null) return;
@@ -1473,6 +1349,10 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             requestRender();
         }
     }
+
+    private static final int RENDER_BUFFER = 500; // Render 500px beyond viewport
+    private int m_lastRenderScrollX = 0;
+    private int m_lastRenderScrollY = 0;
     
     private void handleScroll(ScrollEvent event) {
         double deltaX = event.getDeltaX();
@@ -1487,7 +1367,10 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             m_scrollY = Math.max(0, Math.min(m_scrollY + scrollAmount, m_maxScrollY));
         }
 
-        m_contentDirty = true;
+        if (Math.abs(m_scrollX - m_lastRenderScrollX) > RENDER_BUFFER ||
+            Math.abs(m_scrollY - m_lastRenderScrollY) > RENDER_BUFFER) {
+            m_contentDirty = true;
+        }
         requestRender();
         event.consume();
     }
@@ -1547,6 +1430,9 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         content.insert(m_cursor.getLocalOffset(), text);
         
+        // NEW: Update navigator incrementally for text changes
+        m_navigator.notifyTextInsert(m_cursor, text.length());
+        
         m_cursor = m_navigator.moveForward(m_cursor);
         m_layoutDirty = true;
         m_contentDirty = true;
@@ -1570,6 +1456,9 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         if (content == null || m_cursor.getLocalOffset() == 0) return;
         
         content.deleteCodePointAt(m_cursor.getLocalOffset() - 1);
+        
+        // NEW: Update navigator incrementally
+        m_navigator.notifyTextDelete(m_cursor, 1);
         
         m_cursor = m_navigator.moveBackward(m_cursor);
         
@@ -1596,6 +1485,9 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         content.deleteCodePointAt(m_cursor.getLocalOffset());
         
+        // NEW: Update navigator incrementally
+        m_navigator.notifyTextDelete(m_cursor, 1);
+        
         m_layoutDirty = true;
         m_contentDirty = true; 
         if(render){
@@ -1615,17 +1507,19 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             if (segment != null && segment.getType() == LayoutSegment.SegmentType.TEXT) {
                 NoteIntegerArray text = segment.getTextContent();
                 if (text != null) {
+                    int deleteLen = end.getLocalOffset() - start.getLocalOffset();
                     text.delete(start.getLocalOffset(), end.getLocalOffset());
+                    m_navigator.notifyTextDelete(start, deleteLen);
                 }
             }
         } else {
             deleteMultiSegmentRange(start, end);
+            m_navigator.invalidateCache();
         }
         
         m_cursor = start;
         clearSelection(false);
         
-        rebuildNavigator();
         m_layoutDirty = true;
         m_contentDirty = true;
         ensureCursorVisible();
@@ -1728,7 +1622,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     
     public void addSegment(LayoutSegment segment, boolean render) {
         m_segments.add(segment.getData());
-        rebuildNavigator();
+        m_navigator.invalidateCache();
         m_layoutDirty = true;
         m_contentDirty = true;
         if(render){
@@ -1738,7 +1632,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     
     public void addSegment(int index, LayoutSegment segment, boolean render) {
         m_segments.add(index, segment.getData());
-        rebuildNavigator();
+        m_navigator.invalidateCache();
         m_layoutDirty = true;
         m_contentDirty = true;
         if(render){
@@ -1749,7 +1643,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     public void removeSegment(int index, boolean render) {
         if (index >= 0 && index < m_segments.size()) {
             m_segments.remove(index);
-            rebuildNavigator();
+            m_navigator.invalidateCache();
             m_layoutDirty = true;
             m_contentDirty = true;
             if(render){
