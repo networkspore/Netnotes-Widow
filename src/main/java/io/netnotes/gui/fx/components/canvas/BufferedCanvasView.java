@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.components.images;
+package io.netnotes.gui.fx.components.canvas;
 
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public abstract class BufferedCanvasView extends Canvas {
     
+ 
 
     public enum RenderMode {
         TRANSFORM,  // Apply effects to existing image
@@ -61,7 +62,6 @@ public abstract class BufferedCanvasView extends Canvas {
     // Transform mode support
     private BufferedImage m_sourceImage = null;
     
-    // Async task chaining
     private final AtomicReference<CompletableFuture<Void>> m_currentTask = 
         new AtomicReference<>(CompletableFuture.completedFuture(null));
     private final AtomicBoolean m_isRealTimeTask = new AtomicBoolean(true);
@@ -79,7 +79,8 @@ public abstract class BufferedCanvasView extends Canvas {
         super(width, height);
         m_gc = getGraphicsContext2D();
     }
-    
+
+
   
     public AtomicBoolean isRealTimeTask(){
         return m_isRealTimeTask;
@@ -108,8 +109,8 @@ public abstract class BufferedCanvasView extends Canvas {
 
     // ========== Render Pipeline ==========
     
-    public void updateImage() {
-        
+    public void requestRender() {
+        final ArrayList<ImageEffects> effects = new ArrayList<>(m_effects);
         Runnable newTask = () -> {
             try {
                 BufferedImage baseImage = generateBaseImage();
@@ -118,7 +119,7 @@ public abstract class BufferedCanvasView extends Canvas {
                     return;
                 }
 
-                for (ImageEffects effect : new ArrayList<>(m_effects)) {
+                for (ImageEffects effect : effects) {
                     effect.applyEffect(baseImage);
                 }
 
@@ -300,12 +301,7 @@ public abstract class BufferedCanvasView extends Canvas {
             RenderingHints.VALUE_RENDER_QUALITY);
     }
     
-    // ========== Public API ==========
-    
-    public void requestRender() {
-        updateImage();
-    }
-    
+
     // ========== Mode Configuration ==========
     
     public void setRenderMode(RenderMode mode) {
@@ -318,7 +314,7 @@ public abstract class BufferedCanvasView extends Canvas {
     
     public void setFitMode(FitMode mode) {
         m_fitMode = mode;
-        updateImage();
+        requestRender();
     }
     
     public FitMode getFitMode() {
@@ -328,14 +324,14 @@ public abstract class BufferedCanvasView extends Canvas {
     public void setFitWidth(int width) {
         m_fitWidth = width;
         if (m_fitMode == FitMode.FIT_WIDTH || m_fitMode == FitMode.FIT_SIZE) {
-            updateImage();
+            requestRender();
         }
     }
     
     public void setFitHeight(int height) {
         m_fitHeight = height;
         if (m_fitMode == FitMode.FIT_HEIGHT || m_fitMode == FitMode.FIT_SIZE) {
-            updateImage();
+            requestRender();
         }
     }
     
@@ -343,14 +339,14 @@ public abstract class BufferedCanvasView extends Canvas {
         m_fitWidth = width;
         m_fitHeight = height;
         if (m_fitMode != FitMode.NONE) {
-            updateImage();
+            requestRender();
         }
     }
     
     public void setScalingAlgorithm(ScalingAlgorithm algorithm) {
         m_scalingAlgorithm = algorithm;
         if (m_fitMode != FitMode.NONE) {
-            updateImage();
+            requestRender();
         }
     }
     
@@ -359,7 +355,7 @@ public abstract class BufferedCanvasView extends Canvas {
     public void setSourceImage(BufferedImage image) {
         m_sourceImage = image;
         m_renderMode = RenderMode.TRANSFORM;
-        updateImage();
+        requestRender();
     }
     
     // ========== Effects System ==========
@@ -393,7 +389,7 @@ public abstract class BufferedCanvasView extends Canvas {
             ImageEffects effect = iterator.next();
             if (effect.getId().equals(id)) {
                 iterator.remove();
-                updateImage();
+                requestRender();
                 break;
             }
         }
@@ -405,30 +401,32 @@ public abstract class BufferedCanvasView extends Canvas {
     
     public void applyEffect(ImageEffects effect) {
         m_effects.add(effect);
-        updateImage();
+        requestRender();
     }
     
     public void addEffect(int index, ImageEffects effect, boolean update) {
         m_effects.add(index, effect);
         if (update) {
-            updateImage();
+            requestRender();
         }
     }
     
     public void clearEffects() {
         m_effects.clear();
-        updateImage();
+        requestRender();
     }
     
     // ========== Cleanup ==========
     
-    public void shutdown() {
-        m_currentTask.get().cancel(true);
-        if (m_workingGraphics != null) {
-            m_workingGraphics.dispose();
-            m_workingGraphics = null;
-        }
-        m_workingBuffer = null;
-        m_sourceImage = null;
+    public CompletableFuture<Void> shutdown() {
+        return CompletableFuture.runAsync(()->{
+            m_currentTask.get().cancel(true);
+            if (m_workingGraphics != null) {
+                m_workingGraphics.dispose();
+                m_workingGraphics = null;
+            }
+            m_workingBuffer = null;
+            m_sourceImage = null;
+        }, TaskUtils.getVirtualExecutor());
     }
 }

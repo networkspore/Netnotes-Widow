@@ -205,6 +205,7 @@ public class BufferedImageView extends ImageView {
     
 
      public void updateImage() {
+       final ArrayList<ImageEffects> effects = new ArrayList<>(m_effects);
         // Chain this task after the previous one
         m_currentTask.updateAndGet(previousTask -> 
             previousTask.thenRunAsync(() -> {
@@ -258,7 +259,7 @@ public class BufferedImageView extends ImageView {
                     
                     // Phase 2: Apply effects (works for all modes)
                     if (!m_effects.isEmpty()) {
-                        for (ImageEffects effect : new ArrayList<>(m_effects)) {
+                        for (ImageEffects effect : effects) {
                             effect.applyEffect(workingImage);
                         }
                     }

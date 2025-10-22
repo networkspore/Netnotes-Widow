@@ -16,14 +16,16 @@ import io.netnotes.engine.noteBytes.NoteIntegerArray;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
 import io.netnotes.engine.noteBytes.NoteBytesObject;
 import io.netnotes.engine.noteBytes.collections.NoteBytesPair;
-import io.netnotes.gui.fx.components.images.BufferedCanvasView;
+import io.netnotes.gui.fx.components.canvas.BufferedCanvasView;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.GraphicsContextPool;
 import io.netnotes.gui.fx.display.TextRenderer;
+import io.netnotes.gui.fx.utils.TaskUtils;
 
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Multi-line text area with segment-based storage using NoteBytesArray.
@@ -1381,22 +1383,22 @@ public class BufferedTextArea extends BufferedCanvasView {
     
     // ========== Cleanup ==========
     
-    public void shutdown() {
-        if (m_cursorTimeline != null) {
-            m_cursorTimeline.stop();
-        }
-        
-        if (widthListener != null) {
-            widthProperty().removeListener(widthListener);
-        }
-        if (heightListener != null) {
-            heightProperty().removeListener(heightListener);
-        }
-        
-        m_segments = null;
-        m_segmentCache.clear();
-        m_lineLayout.clear();
-        
-        super.shutdown();
+    public CompletableFuture<Void> shutdown() {
+        return CompletableFuture.runAsync(()->{
+            if (m_cursorTimeline != null) {
+                m_cursorTimeline.stop();
+            }
+            
+            if (widthListener != null) {
+                widthProperty().removeListener(widthListener);
+            }
+            if (heightListener != null) {
+                heightProperty().removeListener(heightListener);
+            }
+            
+            m_segments = null;
+            m_segmentCache.clear();
+            m_lineLayout.clear();
+        }, TaskUtils.getVirtualExecutor()).thenAccept((_)->super.shutdown());
     }
 }

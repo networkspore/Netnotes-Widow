@@ -11,7 +11,7 @@ import javafx.scene.text.TextAlignment;
 import javafx.util.Duration;
 
 import io.netnotes.engine.noteBytes.NoteIntegerArray;
-import io.netnotes.gui.fx.components.images.BufferedCanvasView;
+import io.netnotes.gui.fx.components.canvas.BufferedCanvasView;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.GraphicsContextPool;
 import io.netnotes.gui.fx.display.TextRenderer;

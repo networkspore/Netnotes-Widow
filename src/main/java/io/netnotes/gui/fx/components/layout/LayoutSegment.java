@@ -529,7 +529,8 @@ public class LayoutSegment {
     // ========== Segment Data ==========
     
     private NoteBytesObject m_data;
-    
+
+    private boolean m_dataDirty = false;
     private SegmentType m_type;
     private LayoutProperties m_layout;
     private InteractionProperties m_interaction;
@@ -671,7 +672,10 @@ public class LayoutSegment {
     public void setCursorEndOffset(int offset) { m_cursorEndOffset = offset; }
     
     public NoteBytesObject getData() { 
-        rebuildData();
+        if (m_dataDirty) {
+            rebuildData();
+            m_dataDirty = false;
+        }
         return m_data; 
     }
     
@@ -703,7 +707,7 @@ public class LayoutSegment {
             m_textContent = new NoteIntegerArray();
         }
         m_textContent.set(text);
-        rebuildData();
+        m_dataDirty = true; // Don't rebuild yet
     }
     
     public void setTextContent(NoteIntegerArray content) {
@@ -786,87 +790,111 @@ public class LayoutSegment {
         
         return null;
     }
+
+    public boolean isDirty(){
+        return m_dataDirty;
+    }
+
+    public void markDirty(){
+        m_dataDirty = true;
+    }
     
     // ========== Builder-Style Methods ==========
     
     public LayoutSegment withDisplay(Display display) {
         m_layout.display = display;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withWidth(Dimension width) {
         m_layout.width = width;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withHeight(Dimension height) {
         m_layout.height = height;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withPadding(Insets padding) {
         m_layout.padding = padding;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withMargin(Insets margin) {
         m_layout.margin = margin;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withBackgroundColor(Color color) {
         m_layout.backgroundColor = color;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withBorder(Color color, int width) {
         m_layout.borderColor = color;
         m_layout.borderWidth = width;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withEditable(boolean editable) {
         m_interaction.editable = editable;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withFocusable(boolean focusable) {
         m_interaction.focusable = focusable;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withSelectable(boolean selectable) {
         m_interaction.selectable = selectable;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withFontSize(int size) {
         m_style.fontSize = size;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withBold(boolean bold) {
         m_style.bold = bold;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withItalic(boolean italic) {
         m_style.italic = italic;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withTextColor(Color color) {
         m_style.textColor = color;
+        m_dataDirty = true;
         return this;
     }
     
     public LayoutSegment withAspectRatio(double aspectRatio) {
         m_layout.aspectRatio = aspectRatio;
+        m_dataDirty = true;
         return this;
     }
-    
+
     public LayoutSegment withScalingAlgorithm(ScalingAlgorithm algorithm) {
         m_layout.scalingAlgorithm = algorithm;
+        m_dataDirty = true;
         return this;
     }
     // ========== Content Length ==========

@@ -10,20 +10,23 @@ import javafx.scene.input.ScrollEvent;
 import javafx.util.Duration;
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
-import io.netnotes.engine.noteBytes.NoteBytesObject;
 import io.netnotes.engine.noteBytes.NoteIntegerArray;
-import io.netnotes.gui.fx.components.images.BufferedCanvasView;
+import io.netnotes.gui.fx.components.canvas.BufferedCanvasView;
 import io.netnotes.gui.fx.components.images.scaling.ScalingUtils.ScalingAlgorithm;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.GraphicsContextPool;
 import io.netnotes.gui.fx.display.TextRenderer;
 import io.netnotes.gui.fx.noteBytes.NoteBytesImage;
+import io.netnotes.gui.fx.utils.TaskUtils;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 
 /**
@@ -36,10 +39,17 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     private static final int DEFAULT_WIDTH = 600;
     private static final int DEFAULT_HEIGHT = 400;
     private static final int VIEWPORT_BUFFER = GraphicsContextPool.SIZE_TOLERANCE;
-    private static final int SCROLL_SPEED = 20;
+  //  private static final int SCROLL_SPEED = 20;
+    private static final int VIRTUAL_SCROLL_MARGIN = 200;
+    
+
+    // ========== Render Queueing =======
+
+    private final AtomicReference<Runnable> pendingDragEvent = new AtomicReference<>(null);
+    private final AtomicBoolean isDragProcessing = new AtomicBoolean(false);
     
     // ========== Data Storage ==========
-    
+
     private NoteBytesArray m_segments;
     private LayoutEngine m_layoutEngine;
     private CursorSelectionSystem.CursorNavigator m_navigator;
@@ -62,6 +72,10 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     private boolean m_cursorVisible;
     private boolean m_isFocused;
     private Timeline m_cursorTimeline;
+
+    // ========== Layer system ==========
+    private BufferedImage m_contentLayer = null;
+    private boolean m_contentDirty = true;
     
     // ========== Scrolling ==========
     
@@ -102,6 +116,9 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     public BufferedLayoutArea(int width, int height) {
         super();
         
+        // Enable real-time coalescing mode - keeps only latest render request
+        isRealTimeTask().set(true);
+        
         m_preferredWidth = width;
         m_preferredHeight = height;
         m_viewportWidth = width + VIEWPORT_BUFFER;
@@ -127,12 +144,10 @@ public class BufferedLayoutArea extends BufferedCanvasView {
 
         setRenderMode(RenderMode.GENERATE);
         setFocusTraversable(true);
-        
-        setupCursorBlink();
         setupEventHandlers();
         setupLayoutListeners();
-        
         rebuildNavigator();
+        setupCursorBlink();
         requestRender();
     }
     
@@ -158,6 +173,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         return m_preferredHeight;
     }
     
+    // Handle resize events with coalescing
     private void setupLayoutListeners() {
         widthListener = (_, _, newVal) -> {
             int val = (int) Math.ceil(newVal.doubleValue());
@@ -187,8 +203,139 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         if (m_layoutDirty) {
             computeLayout();
             m_layoutDirty = false;
+            m_contentDirty = true; // Layout changed, content needs redraw
         }
         
+        // Regenerate content layer if dirty
+        if (m_contentDirty || m_contentLayer == null || 
+            m_contentLayer.getWidth() != width || m_contentLayer.getHeight() != height) {
+            
+            // Create/recreate content layer
+            if (m_contentLayer == null || 
+                m_contentLayer.getWidth() != width || 
+                m_contentLayer.getHeight() != height) {
+                m_contentLayer = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            }
+            
+            Graphics2D contentG2d = m_contentLayer.createGraphics();
+            
+            // Enable high quality rendering
+            contentG2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, 
+                                       RenderingHints.VALUE_ANTIALIAS_ON);
+            contentG2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, 
+                                       RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
+            
+            // Draw static content layer with virtual scrolling
+            drawContentLayer(contentG2d, width, height);
+            
+            contentG2d.dispose();
+            m_contentDirty = false;
+        }
+        
+        // Composite layers: content + overlay
+        g2d.drawImage(m_contentLayer, 0, 0, null);
+        
+        // Draw dynamic overlay (cursor, selection)
+        drawOverlayLayer(g2d, width, height);
+    }
+
+    /**
+     * Render layout result with virtual scrolling optimization.
+     * Skips segments outside visible bounds (viewport + margin).
+     * 
+     * @param hasSelection - if true, renders selection (for overlay), if false skips selection (for content layer)
+     */
+    private void renderLayoutResultVirtual(Graphics2D g2d, 
+                                          LayoutEngine.LayoutResult result, 
+                                          int offsetX, int offsetY,
+                                          int visibleTop, int visibleBottom,
+                                          int visibleLeft, int visibleRight,
+                                          boolean hasSelection,
+                                          int selStart, int selEnd) {
+        LayoutSegment segment = result.segment;
+        Rectangle bounds = result.bounds;
+        
+        // Skip if display:none
+        if (segment.getLayout().display == LayoutSegment.Display.NONE) {
+            return;
+        }
+        
+        int x = bounds.x + offsetX;
+        int y = bounds.y + offsetY;
+        int w = bounds.width;
+        int h = bounds.height;
+        
+        // VIRTUAL SCROLLING: Skip if completely outside visible range
+        if (y + h < visibleTop || y > visibleBottom ||
+            x + w < visibleLeft || x > visibleRight) {
+            return; // Don't render this segment or its children
+        }
+        
+        // Segment is at least partially visible - render it
+        
+        // Render background
+        if (segment.getLayout().backgroundColor != null) {
+            g2d.setColor(segment.getLayout().backgroundColor);
+            g2d.fillRect(x, y, w, h);
+        }
+        
+        // Render border
+        if (segment.getLayout().borderWidth > 0 && segment.getLayout().borderColor != null) {
+            g2d.setColor(segment.getLayout().borderColor);
+            g2d.setStroke(new BasicStroke(segment.getLayout().borderWidth));
+            g2d.drawRect(x, y, w, h);
+        }
+        
+        // Render selection ONLY if hasSelection is true (for overlay layer)
+        if (hasSelection) {
+            int segStart = result.globalStartOffset;
+            int segEnd = result.globalEndOffset;
+            boolean isInRange = !(selEnd <= segStart || selStart >= segEnd);
+            
+            if (isInRange) {
+                if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
+                    renderTextSelection(g2d, result, offsetX, offsetY, selStart, selEnd);
+                } else {
+                    g2d.setColor(m_selectionColor);
+                    g2d.fillRect(x, y, w, h);
+                }
+            }
+        }
+        
+        // Render content (skip if display:hidden)
+        if (segment.getLayout().display != LayoutSegment.Display.HIDDEN) {
+            switch (segment.getType()) {
+                case TEXT:
+                    renderTextWithWrapping(g2d, segment, bounds, offsetX, offsetY);
+                    break;
+                    
+                case IMAGE:
+                    renderImage(g2d, segment, bounds, offsetX, offsetY);
+                    break;
+                    
+                case SPACER:
+                    // Nothing to render
+                    break;
+                    
+                default:
+                    break;
+            }
+        }
+        
+        // Render children with same virtual scrolling bounds
+        for (LayoutEngine.LayoutResult child : result.children) {
+            renderLayoutResultVirtual(g2d, child, offsetX, offsetY,
+                                     visibleTop, visibleBottom, 
+                                     visibleLeft, visibleRight,
+                                     hasSelection, selStart, selEnd);
+        }
+    }
+
+   /**
+     * Draw static content layer with virtual scrolling optimization.
+     * Only renders segments within viewport + margin.
+     */
+    private void drawContentLayer(Graphics2D g2d, int width, int height) {
         // Clear background
         g2d.setComposite(AlphaComposite.Clear);
         g2d.fillRect(0, 0, width, height);
@@ -207,18 +354,147 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         g2d.setClip(paddingLeft, paddingTop, availableWidth, availableHeight);
         
-        // Render layout tree
+        // Calculate virtual scrolling bounds (viewport + margin)
+        int visibleTop = m_scrollY - VIRTUAL_SCROLL_MARGIN;
+        int visibleBottom = m_scrollY + availableHeight + VIRTUAL_SCROLL_MARGIN;
+        int visibleLeft = m_scrollX - VIRTUAL_SCROLL_MARGIN;
+        int visibleRight = m_scrollX + availableWidth + VIRTUAL_SCROLL_MARGIN;
+        
+        // Render layout tree with virtual scrolling
         if (m_layoutResult != null) {
-            renderLayoutResult(g2d, m_layoutResult, paddingLeft - m_scrollX, paddingTop - m_scrollY);
+            renderLayoutResultVirtual(g2d, m_layoutResult, 
+                                     paddingLeft - m_scrollX, 
+                                     paddingTop - m_scrollY,
+                                     visibleTop, visibleBottom, 
+                                     visibleLeft, visibleRight,
+                                     false, 0, 0); // No selection in content layer
         }
         
-        // Render cursor
-        if (m_isFocused && m_cursorVisible && m_selection == null) {
+        g2d.setClip(null);
+    }
+    
+
+   /**
+     * Draw dynamic overlay layer (cursor, selection).
+     * This is redrawn every frame but is very fast.
+     */
+    private void drawOverlayLayer(Graphics2D g2d, int width, int height) {
+        // Set clipping region
+        int paddingLeft = m_insets.left;
+        int paddingTop = m_insets.top;
+        int paddingRight = m_insets.right;
+        int paddingBottom = m_insets.bottom;
+        int availableWidth = m_preferredWidth - paddingLeft - paddingRight;
+        int availableHeight = m_preferredHeight - paddingTop - paddingBottom;
+        
+        g2d.setClip(paddingLeft, paddingTop, availableWidth, availableHeight);
+        
+        // Pre-compute selection info once
+        boolean hasSelection = m_selection != null;
+        CursorSelectionSystem.Selection normalizedSelection = hasSelection ? m_selection.normalized() : null;
+        int selStart = hasSelection ? normalizedSelection.getStart().getGlobalOffset() : 0;
+        int selEnd = hasSelection ? normalizedSelection.getEnd().getGlobalOffset() : 0;
+        
+        // Render selection highlights
+        if (hasSelection && m_layoutResult != null) {
+            renderSelectionOverlay(g2d, m_layoutResult, 
+                                  paddingLeft - m_scrollX, 
+                                  paddingTop - m_scrollY,
+                                  selStart, selEnd);
+        }
+        
+        // Render cursor (only when no selection and focused)
+        if (m_isFocused && m_cursorVisible && !hasSelection) {
             renderCursor(g2d, paddingLeft - m_scrollX, paddingTop - m_scrollY);
         }
         
         g2d.setClip(null);
     }
+    
+     /**
+     * Render selection highlights only (for overlay layer).
+     * Uses pre-computed selection range for efficiency.
+     */
+    private void renderSelectionOverlay(Graphics2D g2d, 
+                                       LayoutEngine.LayoutResult result, 
+                                       int offsetX, int offsetY,
+                                       int selStart, int selEnd) {
+        LayoutSegment segment = result.segment;
+        Rectangle bounds = result.bounds;
+        
+        // Skip if display:none
+        if (segment.getLayout().display == LayoutSegment.Display.NONE) {
+            return;
+        }
+        
+        int segStart = result.globalStartOffset;
+        int segEnd = result.globalEndOffset;
+        
+        // Quick range check using pre-computed offsets
+        boolean isInRange = !(selEnd <= segStart || selStart >= segEnd);
+        
+        if (isInRange) {
+            // Render selection for this segment
+            if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
+                renderTextSelection(g2d, result, offsetX, offsetY, selStart, selEnd);
+            } else {
+                // Non-text segment - highlight entire bounds
+                g2d.setColor(m_selectionColor);
+                g2d.fillRect(
+                    bounds.x + offsetX,
+                    bounds.y + offsetY,
+                    bounds.width,
+                    bounds.height
+                );
+            }
+        }
+        
+        // Recurse to children
+        for (LayoutEngine.LayoutResult child : result.children) {
+            renderSelectionOverlay(g2d, child, offsetX, offsetY, selStart, selEnd);
+        }
+    }
+    
+    /**
+     * Render text selection highlight (optimized with pre-computed range).
+     */
+    private void renderTextSelection(Graphics2D g2d, 
+                                     LayoutEngine.LayoutResult result,
+                                     int offsetX, int offsetY,
+                                     int selStart, int selEnd) {
+        NoteIntegerArray text = result.segment.getTextContent();
+        if (text == null || text.length() == 0) {
+            return;
+        }
+        
+        String str = text.toString();
+        Font font = result.segment.getStyle().getFont();
+        
+        int segStart = result.globalStartOffset;
+       // int segEnd = result.globalEndOffset;
+        
+        int localStart = Math.max(0, selStart - segStart);
+        int localEnd = Math.min(str.length(), selEnd - segStart);
+        
+        if (localEnd > localStart) {
+            String beforeSel = str.substring(0, localStart);
+            String selected = str.substring(localStart, localEnd);
+            
+            int beforeWidth = m_textRenderer.getTextWidth(beforeSel, font);
+            int selWidth = m_textRenderer.getTextWidth(selected, font);
+            
+            Rectangle bounds = result.bounds;
+            int x = bounds.x + offsetX + result.segment.getLayout().padding.left + beforeWidth;
+            int y = bounds.y + offsetY + result.segment.getLayout().padding.top;
+            int h = bounds.height - result.segment.getLayout().padding.top -
+                    result.segment.getLayout().padding.bottom;
+            
+            g2d.setColor(m_selectionColor);
+            g2d.fillRect(x, y, selWidth, h);
+        }
+    }
+    
+
     
     // ========== Layout Computation ==========
     
@@ -236,6 +512,20 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         int availableWidth = m_preferredWidth - paddingLeft - paddingRight;
         int availableHeight = m_preferredHeight - paddingTop - paddingBottom;
         
+        // Generate cache key based on content + constraints
+        String layoutKey = generateLayoutKey(m_segments, availableWidth, availableHeight);
+        
+        // Try cache first
+        LayoutEngine.LayoutResult cached = m_resourceManager.getLayout(layoutKey);
+        if (cached != null) {
+            m_layoutResult = cached;
+            updateScrollBounds();
+            return;
+        }
+
+        
+        
+        // Cache miss - compute layout
         LayoutEngine.Constraints constraints = LayoutEngine.Constraints.loose(
             availableWidth,
             availableHeight
@@ -243,19 +533,35 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         m_layoutResult = m_layoutEngine.layout(m_segments, constraints);
         
-        // Update scroll bounds
+        // Cache the result
         if (m_layoutResult != null) {
-            m_maxScrollX = Math.max(0, m_layoutResult.bounds.width - availableWidth);
-            m_maxScrollY = Math.max(0, m_layoutResult.bounds.height - availableHeight);
-            
-            m_scrollX = Math.max(0, Math.min(m_scrollX, m_maxScrollX));
-            m_scrollY = Math.max(0, Math.min(m_scrollY, m_maxScrollY));
+            m_resourceManager.cacheLayout(layoutKey, m_layoutResult);
+            updateScrollBounds();
         }
+    }
+
+    private String generateLayoutKey(NoteBytesArray segments, int width, int height) {
+        // Use content hash + dimensions as key
+        return segments.hashCode() + "_" + width + "x" + height;
+    }
+
+    private void updateScrollBounds() {
+        int availableWidth = m_preferredWidth - m_insets.left - m_insets.right;
+        int availableHeight = m_preferredHeight - m_insets.top - m_insets.bottom;
+        
+        m_maxScrollX = Math.max(0, m_layoutResult.bounds.width - availableWidth);
+        m_maxScrollY = Math.max(0, m_layoutResult.bounds.height - availableHeight);
+        
+        m_scrollX = Math.max(0, Math.min(m_scrollX, m_maxScrollX));
+        m_scrollY = Math.max(0, Math.min(m_scrollY, m_maxScrollY));
     }
     
     // ========== Rendering ==========
-    
-    private void renderLayoutResult(Graphics2D g2d, LayoutEngine.LayoutResult result, int offsetX, int offsetY) {
+ 
+    private void renderLayoutResult(Graphics2D g2d, LayoutEngine.LayoutResult result, 
+                                   int offsetX, int offsetY,
+                                   boolean hasSelection, int selStart, int selEnd,
+                                   CursorSelectionSystem.Selection normalizedSelection) {
         LayoutSegment segment = result.segment;
         Rectangle bounds = result.bounds;
         
@@ -288,9 +594,20 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             g2d.drawRect(x, y, w, h);
         }
         
-        // Render selection if this segment is selected
-        if (m_selection != null && isSegmentSelected(result)) {
-            renderSelection(g2d, result, offsetX, offsetY);
+        // Render selection ONLY if hasSelection is true (for content layer, it's false)
+        if (hasSelection) {
+            int segStart = result.globalStartOffset;
+            int segEnd = result.globalEndOffset;
+            boolean isInRange = !(selEnd <= segStart || selStart >= segEnd);
+            
+            if (isInRange) {
+                if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
+                    renderTextSelection(g2d, result, offsetX, offsetY, selStart, selEnd);
+                } else {
+                    g2d.setColor(m_selectionColor);
+                    g2d.fillRect(x, y, w, h);
+                }
+            }
         }
         
         // Render content (skip if display:hidden)
@@ -315,10 +632,12 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         // Render children
         for (LayoutEngine.LayoutResult child : result.children) {
-            renderLayoutResult(g2d, child, offsetX, offsetY);
+            renderLayoutResult(g2d, child, offsetX, offsetY, 
+                             hasSelection, selStart, selEnd, normalizedSelection);
         }
     }
-    
+
+
     /**
      * IMPROVED: Render text with proper word wrapping
      */
@@ -466,7 +785,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     /**
      * Add an image segment from byte array
      */
-    public void addImage(byte[] imageData, int width, int height) {
+    public void addImage(byte[] imageData, int width, int height, boolean render) {
         NoteBytesImage image = new NoteBytesImage(imageData);
         
         LayoutSegment segment = new LayoutSegment(LayoutSegment.SegmentType.IMAGE);
@@ -475,13 +794,13 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         segment.getLayout().width = LayoutSegment.Dimension.px(width);
         segment.getLayout().height = LayoutSegment.Dimension.px(height);
         
-        addSegment(segment);
+        addSegment(segment, render);
     }
 
     /**
      * Add an image segment with percentage sizing
      */
-    public void addImageWithPercentageSize(byte[] imageData, double widthPercent) {
+    public void addImageWithPercentageSize(byte[] imageData, double widthPercent, boolean render) {
         NoteBytesImage image = new NoteBytesImage(imageData);
         
         LayoutSegment segment = new LayoutSegment(LayoutSegment.SegmentType.IMAGE);
@@ -505,7 +824,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             segment.getLayout().height = LayoutSegment.Dimension.auto();
         }
         
-        addSegment(segment);
+        addSegment(segment, render);
     }
 
     private NoteBytesImage getImageContent(LayoutSegment segment) {
@@ -549,7 +868,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         );
     }
 
-    private boolean isSegmentSelected(LayoutEngine.LayoutResult result) {
+    /*private boolean isSegmentSelected(LayoutEngine.LayoutResult result) {
         if (m_selection == null) return false;
         
         CursorSelectionSystem.Selection normalized = m_selection.normalized();
@@ -561,15 +880,12 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         // Check for overlap
         return !(selEnd <= segStart || selStart >= segEnd);
-    }
+    }*/
     
-    private void renderSelection(Graphics2D g2d, LayoutEngine.LayoutResult result, int offsetX, int offsetY) {
-        CursorSelectionSystem.Selection normalized = m_selection.normalized();
-        int selStart = normalized.getStart().getGlobalOffset();
-        int selEnd = normalized.getEnd().getGlobalOffset();
-        
+    private void renderSelection(Graphics2D g2d, LayoutEngine.LayoutResult result, int offsetX, int offsetY, int selStart, int selEnd) {
+
         int segStart = result.globalStartOffset;
-        int segEnd = result.globalEndOffset;
+       // int segEnd = result.globalEndOffset;
         
         Rectangle bounds = result.bounds;
         
@@ -664,7 +980,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             } else {
                 m_cursorTimeline.stop();
                 m_cursorVisible = false;
-                clearSelection();
+                clearSelection(false);
             }
             requestRender();
         });
@@ -706,7 +1022,9 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     
     // ========== Event Handlers ==========
     
+   
     private void setupEventHandlers() {
+        
         setOnKeyPressed(this::handleKeyPressed);
         setOnKeyTyped(this::handleKeyTyped);
         setOnMousePressed(this::handleMousePressed);
@@ -730,7 +1048,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             code == KeyCode.UP || code == KeyCode.DOWN) {
             
             if (shift) startSelection();
-            else clearSelection();
+            else clearSelection(false);
             
             if (code == KeyCode.LEFT) {
                 m_cursor = m_navigator.moveBackward(m_cursor);
@@ -742,14 +1060,14 @@ public class BufferedLayoutArea extends BufferedCanvasView {
                 m_cursor = moveDown(m_cursor);
             }
             
-            if (shift) updateSelection();
+            if (shift) updateSelection(false);
             
             ensureCursorVisible();
-            requestRender();
+            
             event.consume();
             
         } else if (code == KeyCode.TAB) {
-            clearSelection();
+            clearSelection(false);
             
             if (shift) {
                 m_cursor = m_navigator.moveToPreviousFocusable(m_cursor);
@@ -758,12 +1076,12 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             }
             
             ensureCursorVisible();
-            requestRender();
+           
             event.consume();
             
         } else if (code == KeyCode.HOME) {
             if (shift) startSelection();
-            else clearSelection();
+            else clearSelection(false);
             
             if (ctrl) {
                 // Jump to document start
@@ -773,15 +1091,15 @@ public class BufferedLayoutArea extends BufferedCanvasView {
                 m_cursor = moveToLineStart(m_cursor);
             }
             
-            if (shift) updateSelection();
+            if (shift) updateSelection(false);
             
             ensureCursorVisible();
-            requestRender();
+           
             event.consume();
             
         } else if (code == KeyCode.END) {
             if (shift) startSelection();
-            else clearSelection();
+            else clearSelection(false);
             
             if (ctrl) {
                 // Jump to document end
@@ -792,30 +1110,30 @@ public class BufferedLayoutArea extends BufferedCanvasView {
                 m_cursor = moveToLineEnd(m_cursor);
             }
             
-            if (shift) updateSelection();
+            if (shift) updateSelection(false);
             
             ensureCursorVisible();
-            requestRender();
+           
             event.consume();
             
         } else if (code == KeyCode.BACK_SPACE) {
             if (m_selection != null) {
-                deleteSelection();
+                deleteSelection(false);
             } else {
-                deleteBeforeCursor();
+                deleteBeforeCursor(false);
             }
             event.consume();
             
         } else if (code == KeyCode.DELETE) {
             if (m_selection != null) {
-                deleteSelection();
+                deleteSelection(false);
             } else {
-                deleteAfterCursor();
+                deleteAfterCursor(false);
             }
             event.consume();
             
         } else if (code == KeyCode.A && ctrl) {
-            selectAll();
+            selectAll(false);
             event.consume();
         } else if (code == KeyCode.C && ctrl) {
             // Copy to clipboard (would need clipboard integration)
@@ -827,6 +1145,8 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             // Paste from clipboard
             event.consume();
         }
+
+        requestRender();
     }
     
     /**
@@ -921,12 +1241,15 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         // Delete selection first if exists
         if (m_selection != null) {
-            deleteSelection();
+            deleteSelection(false);
         }
         
-        insertAtCursor(character);
+        insertAtCursor(character, true);
+        
         event.consume();
     }
+
+     
     
     /**
      * IMPROVED: Character-level precision for text segments
@@ -999,9 +1322,34 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         return closest;
     }
 
-     private void handleMouseDragged(MouseEvent event) {
+
+    private void handleMouseDragged(MouseEvent event) {
         if (!m_isSelecting || m_layoutResult == null) return;
+        double mouseX = event.getX();
+        double mouseY = event.getY();
         
+        pendingDragEvent.set(() -> processDragEvent(mouseX, mouseY));
+
+        if (isDragProcessing.compareAndSet(false, true)) {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    Runnable task = pendingDragEvent.getAndSet(null);
+                    if (task != null) {
+                        task.run();
+                    }
+                } finally {
+                    isDragProcessing.set(false);
+                    
+                    // If another event arrived, schedule it
+                    if (pendingDragEvent.get() != null) {
+                        handleMouseDragged(null); // Recursive call to re-schedule
+                    }
+                }
+            }, TaskUtils.getVirtualExecutor());
+        }
+    }
+
+    private void processDragEvent(double mouseX, double mouseY){
         int paddingLeft = m_insets.left;
         int paddingTop = m_insets.top;
         int paddingRight = m_insets.right;
@@ -1010,8 +1358,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         int viewportWidth = m_preferredWidth - paddingLeft - paddingRight;
         int viewportHeight = m_preferredHeight - paddingTop - paddingBottom;
         
-        double mouseX = event.getX();
-        double mouseY = event.getY();
+
         
         int scrollDelta = 10;
         
@@ -1055,29 +1402,23 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             }
             requestRender();
         }
+        
     }
-    
+
+   
+
     private void handleMouseReleased(MouseEvent event) {
-        if (event.getClickCount() == 2) {
-            selectWordAtCursor();
-            m_isSelecting = false;
-            return;
-        }
-        
-        if (event.getClickCount() == 3) {
-            selectSegmentAtCursor();
-            m_isSelecting = false;
-            return;
-        }
-        
         m_isSelecting = false;
-        
-        if (m_selection != null && m_selection.isEmpty()) {
-            clearSelection();
+        if (event.getClickCount() == 2) {
+            selectWordAtCursor(true);
+        }else if (event.getClickCount() == 3) {
+            selectSegmentAtCursor(true);
+        }else if (m_selection != null && m_selection.isEmpty()) {
+            clearSelection(true);
         }
     }
     
-    private void selectWordAtCursor() {
+    private void selectWordAtCursor(boolean render) {
         LayoutSegment segment = m_navigator.getSegmentAt(m_cursor);
         if (segment == null || segment.getType() != LayoutSegment.SegmentType.TEXT) {
             return;
@@ -1109,11 +1450,13 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             
             m_selection = new CursorSelectionSystem.Selection(startPos, endPos);
             m_cursor = endPos;
-            requestRender();
+            if(render){
+                requestRender();
+            }
         }
     }
     
-    private void selectSegmentAtCursor() {
+    private void selectSegmentAtCursor(boolean render) {
         if (m_layoutResult == null) return;
         
         LayoutEngine.LayoutResult result = m_layoutResult.findAtOffset(m_cursor.getGlobalOffset());
@@ -1126,15 +1469,16 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         m_selection = new CursorSelectionSystem.Selection(startPos, endPos);
         m_cursor = endPos;
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
     private void handleScroll(ScrollEvent event) {
         double deltaX = event.getDeltaX();
         double deltaY = event.getDeltaY();
-        
         boolean shift = event.isShiftDown();
-        
+
         if (shift || Math.abs(deltaX) > Math.abs(deltaY)) {
             int scrollAmount = (int) (-deltaX);
             m_scrollX = Math.max(0, Math.min(m_scrollX + scrollAmount, m_maxScrollX));
@@ -1142,10 +1486,12 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             int scrollAmount = (int) (-deltaY / 2);
             m_scrollY = Math.max(0, Math.min(m_scrollY + scrollAmount, m_maxScrollY));
         }
-        
+
+        m_contentDirty = true;
         requestRender();
         event.consume();
     }
+
     
     private void startSelection() {
         if (m_selection == null) {
@@ -1153,24 +1499,28 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         }
     }
     
-    private void updateSelection() {
+    private void updateSelection(boolean render) {
         if (m_selection != null) {
             m_selection = new CursorSelectionSystem.Selection(
                 m_selection.getStart(),
                 m_cursor
             );
-            requestRender();
+            if(render){
+                requestRender();
+            }
         }
     }
     
-    private void clearSelection() {
+    private void clearSelection(boolean render) {
         if (m_selection != null) {
             m_selection = null;
-            requestRender();
+            if(render){
+                requestRender();
+            }
         }
     }
     
-    private void selectAll() {
+    private void selectAll(boolean render) {
         if (m_segments.size() == 0) return;
         
         CursorSelectionSystem.CursorPosition start = new CursorSelectionSystem.CursorPosition();
@@ -1179,10 +1529,14 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         m_selection = new CursorSelectionSystem.Selection(start, end);
         m_cursor = end;
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
-    private void insertAtCursor(String text) {
+
+
+    private void insertAtCursor(String text, boolean render) {
         LayoutSegment segment = m_navigator.getSegmentAt(m_cursor);
         if (segment == null || segment.getType() != LayoutSegment.SegmentType.TEXT) {
             return;
@@ -1193,16 +1547,16 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         content.insert(m_cursor.getLocalOffset(), text);
         
-        updateSegmentInStorage(m_cursor, segment);
-        
         m_cursor = m_navigator.moveForward(m_cursor);
-        
         m_layoutDirty = true;
+        m_contentDirty = true;
         ensureCursorVisible();
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
-    
-    private void deleteBeforeCursor() {
+
+    private void deleteBeforeCursor(boolean render) {
         if (m_cursor.getGlobalOffset() == 0) return;
         
         LayoutSegment segment = m_navigator.getSegmentAt(m_cursor);
@@ -1217,16 +1571,17 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         content.deleteCodePointAt(m_cursor.getLocalOffset() - 1);
         
-        updateSegmentInStorage(m_cursor, segment);
-        
         m_cursor = m_navigator.moveBackward(m_cursor);
         
         m_layoutDirty = true;
+        m_contentDirty = true; 
         ensureCursorVisible();
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
-    
-    private void deleteAfterCursor() {
+
+    private void deleteAfterCursor(boolean render) {
         LayoutSegment segment = m_navigator.getSegmentAt(m_cursor);
         if (segment == null || segment.getType() != LayoutSegment.SegmentType.TEXT) {
             return;
@@ -1241,13 +1596,14 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         content.deleteCodePointAt(m_cursor.getLocalOffset());
         
-        updateSegmentInStorage(m_cursor, segment);
-        
         m_layoutDirty = true;
-        requestRender();
+        m_contentDirty = true; 
+        if(render){
+            requestRender();
+        }
     }
     
-    private void deleteSelection() {
+    private void deleteSelection(boolean render) {
         if (m_selection == null || m_selection.isEmpty()) return;
         
         CursorSelectionSystem.Selection normalized = m_selection.normalized();
@@ -1260,7 +1616,6 @@ public class BufferedLayoutArea extends BufferedCanvasView {
                 NoteIntegerArray text = segment.getTextContent();
                 if (text != null) {
                     text.delete(start.getLocalOffset(), end.getLocalOffset());
-                    updateSegmentInStorage(start, segment);
                 }
             }
         } else {
@@ -1268,12 +1623,15 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         }
         
         m_cursor = start;
-        clearSelection();
+        clearSelection(false);
         
         rebuildNavigator();
         m_layoutDirty = true;
+        m_contentDirty = true;
         ensureCursorVisible();
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
     private void deleteMultiSegmentRange(CursorSelectionSystem.CursorPosition start, CursorSelectionSystem.CursorPosition end) {
@@ -1302,27 +1660,25 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             if (text == null) continue;
             
             int segStart = result.globalStartOffset;
-            int segEnd = result.globalEndOffset;
+          //  int segEnd = result.globalEndOffset;
             
             int deleteStart = Math.max(0, startGlobal - segStart);
             int deleteEnd = Math.min(text.length(), endGlobal - segStart);
             
             if (deleteEnd > deleteStart) {
                 text.delete(deleteStart, deleteEnd);
-                
-                CursorSelectionSystem.CursorPosition pos = m_navigator.globalOffsetToPosition(segStart);
-                updateSegmentInStorage(pos, segment);
             }
         }
     }
     
-    private void updateSegmentInStorage(CursorSelectionSystem.CursorPosition position, LayoutSegment segment) {
+    /*private void updateSegmentInStorage(CursorSelectionSystem.CursorPosition position, LayoutSegment segment) {
         List<Integer> path = position.getSegmentPath();
         
         if (path.isEmpty()) return;
         
         NoteBytesArray current = m_segments;
         
+        // Navigate to parent container
         for (int i = 0; i < path.size() - 1; i++) {
             int index = path.get(i);
             if (index >= current.size()) return;
@@ -1335,11 +1691,20 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             current = parent.getChildren();
         }
         
+        // Update the segment directly in the array
         int finalIndex = path.get(path.size() - 1);
         if (finalIndex < current.size()) {
-            current.set(finalIndex, segment.getData());
+            // Get the existing NoteBytesObject
+            NoteBytesObject existing = (NoteBytesObject) current.get(finalIndex);
+            
+            // Update its content field directly (for TEXT segments)
+            if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
+                existing.add("content", segment.getTextContent());
+            }
+            // No need to replace the entire object in the array
+            // The reference is already there and we've mutated it
         }
-    }
+    }*/
     
     private void rebuildNavigator() {
         m_navigator = new CursorSelectionSystem.CursorNavigator(m_segments);
@@ -1349,39 +1714,51 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         return m_segments;
     }
     
-    public void setSegments(NoteBytesArray segments) {
+    public void setSegments(NoteBytesArray segments, boolean render) {
         m_segments = segments;
         rebuildNavigator();
         m_cursor = new CursorSelectionSystem.CursorPosition();
         m_selection = null;
         m_layoutDirty = true;
-        requestRender();
-    }
-    
-    public void addSegment(LayoutSegment segment) {
-        m_segments.add(segment.getData());
-        rebuildNavigator();
-        m_layoutDirty = true;
-        requestRender();
-    }
-    
-    public void addSegment(int index, LayoutSegment segment) {
-        m_segments.add(index, segment.getData());
-        rebuildNavigator();
-        m_layoutDirty = true;
-        requestRender();
-    }
-    
-    public void removeSegment(int index) {
-        if (index >= 0 && index < m_segments.size()) {
-            m_segments.remove(index);
-            rebuildNavigator();
-            m_layoutDirty = true;
+        m_contentDirty = true; // Content changed
+        if(render){
             requestRender();
         }
     }
     
-    public void clear() {
+    public void addSegment(LayoutSegment segment, boolean render) {
+        m_segments.add(segment.getData());
+        rebuildNavigator();
+        m_layoutDirty = true;
+        m_contentDirty = true;
+        if(render){
+            requestRender();
+        }
+    }
+    
+    public void addSegment(int index, LayoutSegment segment, boolean render) {
+        m_segments.add(index, segment.getData());
+        rebuildNavigator();
+        m_layoutDirty = true;
+        m_contentDirty = true;
+        if(render){
+            requestRender();
+        }
+    }
+    
+    public void removeSegment(int index, boolean render) {
+        if (index >= 0 && index < m_segments.size()) {
+            m_segments.remove(index);
+            rebuildNavigator();
+            m_layoutDirty = true;
+            m_contentDirty = true;
+            if(render){
+                requestRender();
+            }
+        }
+    }
+    
+    public void clear(boolean render) {
         m_segments.clear();
         rebuildNavigator();
         m_cursor = new CursorSelectionSystem.CursorPosition();
@@ -1389,17 +1766,22 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         m_scrollX = 0;
         m_scrollY = 0;
         m_layoutDirty = true;
-        requestRender();
+        m_contentDirty = true;
+        if(render){
+            requestRender();
+        }
     }
     
     public CursorSelectionSystem.CursorPosition getCursorPosition() {
         return m_cursor;
     }
     
-    public void setCursorPosition(CursorSelectionSystem.CursorPosition position) {
+    public void setCursorPosition(CursorSelectionSystem.CursorPosition position, boolean render) {
         m_cursor = position;
         ensureCursorVisible();
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
     public CursorSelectionSystem.Selection getSelection() {
@@ -1427,50 +1809,60 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         return m_layoutResult.flatten();
     }
     
-    public void setBackgroundColor(Color color) {
+    public void setBackgroundColor(Color color, boolean render) {
         m_backgroundColor = color;
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
     public Color getBackgroundColor() {
         return m_backgroundColor;
     }
     
-    public void setCursorColor(Color color) {
+    public void setCursorColor(Color color, boolean render) {
         m_cursorColor = color;
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
     public Color getCursorColor() {
         return m_cursorColor;
     }
     
-    public void setSelectionColor(Color color) {
+    public void setSelectionColor(Color color, boolean render) {
         m_selectionColor = color;
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
     public Color getSelectionColor() {
         return m_selectionColor;
     }
     
-    public void setInsets(Insets insets) {
+    public void setInsets(Insets insets, boolean render) {
         m_insets = insets;
         m_layoutDirty = true;
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
     public Insets getInsets() {
         return m_insets;
     }
     
-    public void setPreferredSize(int width, int height) {
+    public void setPreferredSize(int width, int height, boolean render) {
         m_preferredWidth = width;
         m_preferredHeight = height;
         m_viewportWidth = width + VIEWPORT_BUFFER;
         m_viewportHeight = height + VIEWPORT_BUFFER;
         m_layoutDirty = true;
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
     public int getPreferredWidth() {
@@ -1489,17 +1881,21 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         return m_scrollY;
     }
     
-    public void setScrollX(int x) {
+    public void setScrollX(int x, boolean render) {
         m_scrollX = Math.max(0, Math.min(x, m_maxScrollX));
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
-    public void setScrollY(int y) {
+    public void setScrollY(int y, boolean render) {
         m_scrollY = Math.max(0, Math.min(y, m_maxScrollY));
-        requestRender();
+        if(render){
+            requestRender();
+        }
     }
     
-    public void scrollToSegment(LayoutSegment segment) {
+    public void scrollToSegment(LayoutSegment segment, boolean render) {
         if (m_layoutResult == null) return;
         
         List<LayoutEngine.LayoutResult> results = m_layoutResult.flatten();
@@ -1520,8 +1916,9 @@ public class BufferedLayoutArea extends BufferedCanvasView {
                 
                 m_scrollX = Math.max(0, Math.min(m_scrollX, m_maxScrollX));
                 m_scrollY = Math.max(0, Math.min(m_scrollY, m_maxScrollY));
-                
-                requestRender();
+                if(render){
+                    requestRender();
+                }
                 break;
             }
         }
@@ -1622,29 +2019,36 @@ public class BufferedLayoutArea extends BufferedCanvasView {
 
 
     
-    public void shutdown() {
-        if (m_cursorTimeline != null) {
-            m_cursorTimeline.stop();
-        }
-        
-        if (widthListener != null) {
-            widthProperty().removeListener(widthListener);
-        }
-        if (heightListener != null) {
-            heightProperty().removeListener(heightListener);
-        }
-        
-        // Clear resource caches
-        if (m_resourceManager != null) {
-            m_resourceManager.clearAll();
-            m_resourceManager = null;
-        }
-        
-        m_segments = null;
-        m_layoutEngine = null;
-        m_navigator = null;
-        m_layoutResult = null;
-        
-        super.shutdown();
+    public CompletableFuture<Void> shutdown() {
+        return CompletableFuture.runAsync(() -> {
+            
+            if (m_contentLayer != null) {
+                m_contentLayer.flush();
+                m_contentLayer = null;
+            }
+            TaskUtils.noDelay(_->{
+                if (m_cursorTimeline != null) {
+                    m_cursorTimeline.stop();
+                }
+
+                if (widthListener != null) {
+                    widthProperty().removeListener(widthListener);
+                }
+                if (heightListener != null) {
+                    heightProperty().removeListener(heightListener);
+                }
+            });
+            // Clear resource caches
+            if (m_resourceManager != null) {
+                m_resourceManager.clearAll();
+                m_resourceManager = null;
+            }
+            
+            m_segments = null;
+            m_layoutEngine = null;
+            m_navigator = null;
+            m_layoutResult = null;
+        }, TaskUtils.getVirtualExecutor()).thenAccept((_)->super.shutdown());
+            
     }
 }
