@@ -20,6 +20,7 @@ import io.netnotes.gui.fx.input.InputMask;
 
 import java.awt.*;
 import java.math.BigDecimal;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Custom text field with direct rendering using BufferedCanvasView.
@@ -1437,7 +1438,7 @@ public class BufferedTextField extends BufferedCanvasView {
     
     // ========== Cleanup ==========
     
-    public void shutdown() {
+    public CompletableFuture<Void> shutdown() {
         // Stop cursor timeline
         if (m_cursorTimeline != null) {
             m_cursorTimeline.stop();
@@ -1450,6 +1451,6 @@ public class BufferedTextField extends BufferedCanvasView {
         m_validator = null;
         m_inputMask = null;
         
-        super.shutdown();
+        return super.shutdown();
     }
 }

@@ -4,9 +4,13 @@ import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
 import io.netnotes.engine.noteBytes.NoteBytesObject;
 import io.netnotes.engine.noteBytes.NoteIntegerArray;
+import io.netnotes.engine.noteBytes.processing.IntCounter;
+import io.netnotes.engine.utils.MathHelpers;
 import io.netnotes.gui.fx.display.TextRenderer;
+import io.netnotes.gui.fx.noteBytes.NoteBytesImage;
 
 import java.awt.*;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,9 +31,11 @@ import java.util.List;
  * - Display modes: block, inline, inline-block, hidden, none
  */
 public class LayoutEngine {
-    
+  
     private final TextRenderer textRenderer = TextRenderer.getInstance();
     
+
+
     /**
      * Constraints for layout computation
      */
@@ -105,11 +111,22 @@ public class LayoutEngine {
         public List<LayoutResult> children;
         public int globalStartOffset;
         public int globalEndOffset;
+
+        private GlyphBoundaryCache glyphCache = null;
+
         
         public LayoutResult(LayoutSegment segment) {
             this.segment = segment;
             this.bounds = new Rectangle(0, 0, 0, 0);
             this.children = new ArrayList<>();
+        }
+
+        public GlyphBoundaryCache getGlyphCache() {
+            return glyphCache;
+        }
+        
+        public void setGlyphCache(GlyphBoundaryCache cache) {
+            this.glyphCache = cache;
         }
         
         /**
@@ -280,8 +297,8 @@ public class LayoutEngine {
         result.bounds.width = contentWidth + padding.left + padding.right;
         result.bounds.height = contentHeight + padding.top + padding.bottom;
     }
-    
-    /**
+        
+        /**
      * Layout a block-level segment
      */
     private void layoutBlock(
@@ -317,11 +334,16 @@ public class LayoutEngine {
         ctx.globalOffset += segment.getContentLength();
         result.globalEndOffset = ctx.globalOffset;
         
+        // NEW: Build glyph cache for text segments
+        if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
+            buildGlyphCache(segment, result);
+        }
+        
         // Advance Y
         ctx.currentY += height + margin.bottom;
         ctx.maxLineWidth = Math.max(ctx.maxLineWidth, width + margin.left + margin.right);
     }
-    
+
     /**
      * Layout an inline or inline-block segment
      */
@@ -356,10 +378,38 @@ public class LayoutEngine {
         ctx.globalOffset += segment.getContentLength();
         result.globalEndOffset = ctx.globalOffset;
         
+        // NEW: Build glyph cache for text segments
+        if (segment.getType() == LayoutSegment.SegmentType.TEXT) {
+            buildGlyphCache(segment, result);
+        }
+        
         // Add to current line
         ctx.currentLine.add(result);
         ctx.currentX += totalWidth;
         ctx.lineHeight = Math.max(ctx.lineHeight, height + margin.top + margin.bottom);
+    }
+
+    private void buildGlyphCache(LayoutSegment segment, LayoutResult result) {
+        NoteIntegerArray textContent = segment.getTextContent();
+        if (textContent == null || textContent.length() == 0) {
+            return;
+        }
+        
+        String text = textContent.toString();
+        Font font = segment.getStyle().getFont();
+        
+        // Calculate base X (where text actually starts)
+        int baseX = result.bounds.x + segment.getLayout().padding.left;
+        
+        // Build and cache glyph boundaries
+        GlyphBoundaryCache glyphCache = GlyphBoundaryCache.build(
+            text,
+            font,
+            baseX,
+            textRenderer
+        );
+        
+        result.setGlyphCache(glyphCache);
     }
     
     /**
@@ -486,23 +536,163 @@ public class LayoutEngine {
         );
     }
     
-    /**
-     * Measure image segment
-     */
-    private MeasuredSize measureImage(LayoutSegment segment, Constraints constraints) {
-        // TODO: Read image dimensions from binary data
-        // For now, return default size or specified dimensions
+    public static MeasuredSize measureImage(LayoutSegment segment, Constraints constraints) {
+        IntCounter width = new IntCounter();  
+        IntCounter height = new IntCounter();
         
-        int width = 100;
-        int height = 100;
+        // Try to get actual image dimensions
+        NoteBytes binaryContent = segment.getBinaryContent();
+        
+        if (binaryContent != null) {
+            try {
+                // Convert to NoteBytesImage if not already
+                boolean isCached = binaryContent instanceof NoteBytesImage;
+                NoteBytesImage image = isCached ? (NoteBytesImage) binaryContent : 
+                new NoteBytesImage(binaryContent.get(), true);
+                
+                if (!isCached) {
+                    image.clearBytes();
+                    segment.setBinaryContent(image);
+                }
+                
+                // Get original dimensions
+                int intrinsicWidth = image.getWidth();
+                int intrinsicHeight = image.getHeight();
+                width.set(intrinsicWidth);
+                height.set(intrinsicHeight);
+                
+                // Check if we need to scale based on layout properties
+                LayoutSegment.LayoutProperties layout = segment.getLayout();
+                
+                boolean widthIsAuto = layout.width.isAuto();
+                boolean heightIsAuto = layout.height.isAuto();
+                
+                // Case 1: Both width and height are explicit
+                if (!widthIsAuto && !heightIsAuto) {
+                    width.set(layout.width.resolve(constraints.maxWidth));
+                    height.set(layout.height.resolve(constraints.maxHeight));
+                }
+                // Case 2: Explicit width, auto height
+                else if (!widthIsAuto && heightIsAuto) {
+                    int resolvedWidth = layout.width.resolve(constraints.maxWidth);
+                    width.set(resolvedWidth);
+                    
+                    // If aspect ratio is specified, use it
+                    if (layout.aspectRatio != null) {
+                        height.set(MathHelpers.divideNearestNeighborToInt(
+                            BigDecimal.valueOf(resolvedWidth), 
+                            layout.aspectRatio
+                        ));
+                    } 
+                    // Otherwise maintain intrinsic aspect ratio
+                    else if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+                        BigDecimal aspectRatio = MathHelpers.divideNearestNeighbor(intrinsicWidth, intrinsicHeight);
+                        height.set(MathHelpers.divideNearestNeighborToInt(
+                            BigDecimal.valueOf(resolvedWidth), 
+                            aspectRatio
+                        ));
+                    }
+                }
+                // Case 3: Auto width, explicit height
+                else if (widthIsAuto && !heightIsAuto) {
+                    int resolvedHeight = layout.height.resolve(constraints.maxHeight);
+                    height.set(resolvedHeight);
+                    
+                    // If aspect ratio is specified, use it
+                    if (layout.aspectRatio != null) {
+                        width.set(MathHelpers.multiplyToInt(
+                            layout.aspectRatio,
+                            resolvedHeight
+                        ));
+                    }
+                    // Otherwise maintain intrinsic aspect ratio
+                    else if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+                        BigDecimal aspectRatio = MathHelpers.divideNearestNeighbor(intrinsicWidth, intrinsicHeight);
+                        width.set(MathHelpers.multiplyToInt(
+                            aspectRatio,
+                            resolvedHeight
+                        ));
+                    }
+                }
+                // Case 4: Both auto
+                else {
+                    // If aspect ratio is specified, can't determine size without at least one dimension
+                    // Default to intrinsic size or full width with aspect ratio
+                    width.set(constraints.maxWidth);
+                    
+                    if (layout.aspectRatio != null) {
+                        height.set(MathHelpers.divideNearestNeighborToInt(
+                            BigDecimal.valueOf(constraints.maxWidth), 
+                            layout.aspectRatio
+                        ));
+                    }
+                    // Maintain intrinsic aspect ratio with full width
+                    else if (intrinsicWidth > 0 && intrinsicHeight > 0) {
+                        BigDecimal aspectRatio = MathHelpers.divideNearestNeighbor(intrinsicWidth, intrinsicHeight);
+                        height.set(MathHelpers.divideNearestNeighborToInt(
+                            BigDecimal.valueOf(constraints.maxWidth), 
+                            aspectRatio
+                        ));
+                    }
+                }
+                
+            } catch (Exception e) {
+                // If image reading fails, reserve space based on layout properties or use defaults
+                System.err.println("Error measuring image: " + e.getMessage());
+                
+                LayoutSegment.LayoutProperties layout = segment.getLayout();
+                
+                // Use explicit dimensions if provided
+                if (!layout.width.isAuto()) {
+                    width.set(layout.width.resolve(constraints.maxWidth));
+                } else {
+                    width.set(constraints.maxWidth);
+                }
+                
+                if (!layout.height.isAuto()) {
+                    height.set(layout.height.resolve(constraints.maxHeight));
+                } else if (layout.aspectRatio != null) {
+                    // Calculate height from width and aspect ratio
+                    height.set(MathHelpers.divideNearestNeighborToInt(
+                        BigDecimal.valueOf(width.get()), 
+                        layout.aspectRatio
+                    ));
+                } else {
+                    // Default fallback - you might want a reasonable default like maxHeight or a fixed value
+                    height.set(constraints.maxHeight);
+                }
+            }
+        } else {
+            // No binary content at all - still reserve space
+            LayoutSegment.LayoutProperties layout = segment.getLayout();
+            
+            if (!layout.width.isAuto()) {
+                width.set(layout.width.resolve(constraints.maxWidth));
+            } else {
+                width.set(constraints.maxWidth);
+            }
+            
+            if (!layout.height.isAuto()) {
+                height.set(layout.height.resolve(constraints.maxHeight));
+            } else if (layout.aspectRatio != null && width.get() > 0) {
+                height.set(MathHelpers.divideNearestNeighborToInt(
+                    BigDecimal.valueOf(width.get()), 
+                    layout.aspectRatio
+                ));
+            } else {
+                height.set(constraints.maxHeight);
+            }
+        }
         
         Insets padding = segment.getLayout().padding;
+        int w = width.get();
+        int h = height.get();
         return new MeasuredSize(
-            width + padding.left + padding.right,
-            height + padding.top + padding.bottom
+            w + padding.left + padding.right,
+            h + padding.top + padding.bottom
         );
     }
-    
+
     /**
      * Resolve final width from layout properties and measured size
      */

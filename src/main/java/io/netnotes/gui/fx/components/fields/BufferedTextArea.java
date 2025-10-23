@@ -55,7 +55,7 @@ public class BufferedTextArea extends BufferedCanvasView {
         public int getValue() {
             return value;
         }
-        
+  
         public static SegmentType fromValue(int value) {
             for (SegmentType type : values()) {
                 if (type.value == value) {

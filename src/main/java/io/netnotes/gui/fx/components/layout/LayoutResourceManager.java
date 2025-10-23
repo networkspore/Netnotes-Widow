@@ -2,101 +2,105 @@ package io.netnotes.gui.fx.components.layout;
 
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import io.netnotes.engine.utils.FreeMemory;
 import io.netnotes.engine.utils.shell.ShellHelpers;
-import io.netnotes.gui.fx.components.images.scaling.ScalingUtils;
-import io.netnotes.gui.fx.components.images.scaling.ScalingUtils.ScalingAlgorithm;
-import io.netnotes.gui.fx.noteBytes.NoteBytesImage;
+import io.netnotes.engine.noteBytes.NoteUUID;
+import io.netnotes.gui.fx.display.ImageHelpers;
 import io.netnotes.gui.fx.utils.TaskUtils;
 
 /**
- * Memory-aware resource manager for BufferedLayoutArea caching.
+ * Singleton smart resource manager for BufferedLayoutArea.
  * 
- * Features:
- * - Adaptive memory management based on system memory
- * - Separate caches for original and scaled images
- * - Image scaling with configurable algorithms
- * - LRU eviction with memory pressure handling
- * - Error conditions for low memory situations
- * - Thread-safe for concurrent access
+ * Philosophy:
+ * - Shared across all BufferedLayoutArea instances for maximum efficiency
+ * - Uses Blake2b hashing to prevent cross-contamination
+ * - Cache everything that's currently in use
+ * - Only evict when segments are removed from documents
+ * - Monitor system memory for warnings, but don't arbitrarily limit cache
+ * - Resources manage their own lifecycle based on document structure
+ * 
+ * Thread-safe for concurrent access from multiple BufferedLayoutArea instances.
  */
 public class LayoutResourceManager {
+    
+    // ========== Singleton ==========
+    
+    private static volatile LayoutResourceManager instance;
 
-    public static final long MAX_MEMORY = 1024 * 1024 * 1024;
+    public static final int HASH_SIZE = 8;
+    public static final long STALE_IMAGE_TIME = 5 * 60 * 1000;
+    /**
+     * Get the singleton instance
+     */
+    public static LayoutResourceManager getInstance() {
+        return instance;
+    }
     
-    // ========== Configuration ==========
+    // ========== Memory Monitoring ==========
     
-    private static final int DEFAULT_IMAGE_CACHE_SIZE = 50;
-    private static final int DEFAULT_SCALED_IMAGE_CACHE_SIZE = 100;
-    private static final int DEFAULT_LAYOUT_CACHE_SIZE = 100;
-    
-    // Memory thresholds as percentages of available memory
-    private static final double DEFAULT_MAX_MEMORY_PERCENT = 0.75; // Use up to 75% of available
-    private static final double WARNING_THRESHOLD = 0.80; // Warn at 80% usage
-    private static final double CRITICAL_THRESHOLD = 0.95; // Critical at 95% usage
-    private static final double AGGRESSIVE_TRIM_THRESHOLD = 0.85; // Trim at 85%
-    
-    // ========== Memory State ==========
-    
-    private volatile long maxMemoryBytes;
     private volatile long currentMemoryUsage = 0;
     private volatile MemoryPressure memoryPressure = MemoryPressure.NORMAL;
     private volatile long lastMemoryCheck = 0;
-    private static final long MEMORY_CHECK_INTERVAL_MS = 5000; // Check every 5 seconds
+    private static final long MEMORY_CHECK_INTERVAL_MS = 10000; // Check every 10 seconds
+    
+    // Memory thresholds for warnings only
+    private static final double SYSTEM_WARNING_THRESHOLD = 0.10; // Warn when system has < 10% free
+    private static final double SYSTEM_CRITICAL_THRESHOLD = 0.05; // Critical when < 5% free
     
     // ========== Caches ==========
     
-    private final LRUCache<String, CachedImage> imageCache;
-    private final LRUCache<String, CachedImage> scaledImageCache;
-    private final LRUCache<String, LayoutEngine.LayoutResult> layoutCache;
+    // Key: Blake2b hash of image data (8 bytes as hex string)
+    private final ConcurrentHashMap<String, CachedImage> imageCache;
+    
+    // Key: content hash + dimensions (per-instance, not shared)
+    private final ConcurrentHashMap<String, CachedLayoutResult> layoutCache;
+    
+    // Track which images are referenced by which instances
+    // Outer key: instance ID, Inner key: image hash
+    private final ConcurrentHashMap<String, Set<String>> activeImagesByInstance;
+    private final ConcurrentHashMap<String, Set<String>> activeScaledImagesByInstance;
     
     // ========== Statistics ==========
     
-    private long imageCacheHits = 0;
-    private long imageCacheMisses = 0;
-    private long scaledImageCacheHits = 0;
-    private long scaledImageCacheMisses = 0;
-    private long layoutCacheHits = 0;
-    private long layoutCacheMisses = 0;
-    private long memoryWarnings = 0;
-    private long memoryErrors = 0;
+    private volatile long layoutCacheHits = 0;
+    private volatile long layoutCacheMisses = 0;
+    private volatile long memoryWarnings = 0;
     
     // ========== Error Listener ==========
     
-    private MemoryErrorListener errorListener;
+    private volatile MemoryErrorListener errorListener;
     
     // ========== Enums ==========
     
     /**
-     * Memory pressure levels
+     * Memory pressure levels - for monitoring only
      */
     public enum MemoryPressure {
-        NORMAL,      // < 80% usage
-        WARNING,     // 80-95% usage
-        CRITICAL     // > 95% usage
+        NORMAL,      // System has plenty of memory
+        WARNING,     // System memory getting low (< 10% free)
+        CRITICAL     // System memory very low (< 5% free)
     }
     
     /**
-     * Memory error types
+     * Memory warning types
      */
-    public enum MemoryErrorType {
-        LOW_MEMORY_WARNING,
-        LOW_MEMORY_CRITICAL,
-        ALLOCATION_FAILED,
-        SYSTEM_MEMORY_LOW
+    public enum MemoryWarningType {
+        SYSTEM_MEMORY_LOW,
+        SYSTEM_MEMORY_CRITICAL
     }
     
     // ========== Interfaces ==========
     
     /**
-     * Listener for memory-related errors and warnings
+     * Listener for memory warnings (not errors - we don't fail on memory)
      */
     public interface MemoryErrorListener {
-        void onMemoryError(MemoryErrorType type, String message, long currentUsage, long maxMemory);
+        void onMemoryWarning(MemoryWarningType type, String message, long currentUsage, long systemAvailable);
     }
     
     // ========== Inner Classes ==========
@@ -105,127 +109,141 @@ public class LayoutResourceManager {
      * Cached image with metadata
      */
     private static class CachedImage {
-        BufferedImage image;
+        final BufferedImage image;
         long memorySize;
-        long lastAccessTime;
-       
+        final AtomicLong lastAccessTime = new AtomicLong(System.currentTimeMillis());
+        final Set<String> instanceIds = ConcurrentHashMap.newKeySet();
+        
         CachedImage(BufferedImage image) {
             this.image = image;
-            this.memorySize = calculateImageMemorySize(image);
+            this.memorySize = ImageHelpers.getBufferedImageSizeInBytes(image);
+        }
+        
+        boolean addInstance(String instanceId) {
+            
+            boolean added = instanceIds.add(instanceId);
+            if(added){
+                updateAccessTime();
+            }
+            return added;
+        }
+
+        boolean removeInstance(String instanceId) {
+            boolean removed = instanceIds.remove(instanceId);
+            if(removed){
+                updateAccessTime();
+            }
+            return removed;
+        }
+     
+        
+        boolean isUnused() {
+            return instanceIds.size() == 0;
+        }
+        
+        void updateAccessTime() {
+            this.lastAccessTime.set(System.currentTimeMillis());
+        }
+        
+    }
+    
+    /**
+     * Cached layout result with instance tracking
+     */
+    private static class CachedLayoutResult {
+        LayoutEngine.LayoutResult result;
+        String instanceId;
+        long lastAccessTime;
+        
+        CachedLayoutResult(LayoutEngine.LayoutResult result, String instanceId) {
+            this.result = result;
+            this.instanceId = instanceId;
             this.lastAccessTime = System.currentTimeMillis();
         }
         
         void updateAccessTime() {
             this.lastAccessTime = System.currentTimeMillis();
         }
-        
-        private static long calculateImageMemorySize(BufferedImage image) {
-            if (image == null) return 0;
-            int width = image.getWidth();
-            int height = image.getHeight();
-            int colorModel = image.getColorModel().getPixelSize();
-            return (long) width * height * (colorModel / 8);
-        }
-
     }
     
+    // ========== Constructor ==========
+    
+    private LayoutResourceManager() {
+        this.imageCache = new ConcurrentHashMap<>();
+        this.layoutCache = new ConcurrentHashMap<>();
+        this.activeImagesByInstance = new ConcurrentHashMap<>();
+        this.activeScaledImagesByInstance = new ConcurrentHashMap<>();
+        
+        // Start background memory monitor
+        startMemoryMonitor();
+    }
+    
+    // ========== Instance Management ==========
+    
     /**
-     * Simple LRU cache implementation
+     * Register a new BufferedLayoutArea instance
+     * Returns a unique instance ID for tracking
      */
-    private static class LRUCache<K, V> extends LinkedHashMap<K, V> {
-        private final int maxSize;
-        private RemovalListener<K, V> removalListener;
-        
-        LRUCache(int maxSize) {
-            super(maxSize + 1, 0.75f, true);
-            this.maxSize = maxSize;
-        }
-        
-        void setRemovalListener(RemovalListener<K, V> listener) {
-            this.removalListener = listener;
-        }
-        
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<K, V> eldest) {
-            boolean shouldRemove = size() > maxSize;
-            if (shouldRemove && removalListener != null) {
-                removalListener.onRemoval(eldest.getKey(), eldest.getValue());
-            }
-            return shouldRemove;
-        }
-        
-        interface RemovalListener<K, V> {
-            void onRemoval(K key, V value);
-        }
+    public String registerInstance() {
+        String instanceId = generateInstanceId();
+        activeImagesByInstance.put(instanceId, ConcurrentHashMap.newKeySet());
+        activeScaledImagesByInstance.put(instanceId, ConcurrentHashMap.newKeySet());
+        return instanceId;
     }
-    
-    // ========== Constructors ==========
-    
-    public LayoutResourceManager() {
-        this(DEFAULT_IMAGE_CACHE_SIZE, DEFAULT_SCALED_IMAGE_CACHE_SIZE, DEFAULT_LAYOUT_CACHE_SIZE);
-    }
-    
-    public LayoutResourceManager(int imageCacheSize, int scaledImageCacheSize, int layoutCacheSize) {
-        this.imageCache = new LRUCache<>(imageCacheSize);
-        this.imageCache.setRemovalListener((_, value) -> {
-            currentMemoryUsage -= value.memorySize;
-        });
-        
-        this.scaledImageCache = new LRUCache<>(scaledImageCacheSize);
-        this.scaledImageCache.setRemovalListener((_, value) -> {
-            currentMemoryUsage -= value.memorySize;
-        });
-        
-        this.layoutCache = new LRUCache<>(layoutCacheSize);
-        
-        // Initialize with adaptive memory limit
-        updateMemoryLimitFromSystem();
-    }
-    
-    // ========== Memory Management ==========
     
     /**
-     * Update memory limit based on current system memory
+     * Unregister a BufferedLayoutArea instance and clean up its resources
      */
-    public void updateMemoryLimitFromSystem() {
-        CompletableFuture<FreeMemory> future = ShellHelpers.getFreeMemory(TaskUtils.getVirtualExecutor());
+    public void unregisterInstance(String instanceId) {
+        if (instanceId == null) return;
         
-        future.thenAccept(freeMemory -> {
-            if (freeMemory != null) {
-                long availableKB = freeMemory.getMemAvailableKB();
-                //long totalKB = freeMemory.getMemTotalKB();
-                
-                // Use percentage of available memory
-                long availableBytes = availableKB * 1024;
-                long newLimit = (long) (availableBytes * DEFAULT_MAX_MEMORY_PERCENT);
-                
-                // Ensure minimum of 50MB and maximum of 2GB
-                newLimit = Math.max(50 * 1024 * 1024, newLimit);
-                newLimit = Math.min(2L * 1024 * 1024 * 1024, newLimit);
-                
-                maxMemoryBytes = newLimit;
-                
-                // Check if we need to trim
-                updateMemoryPressure();
-                
-            } else {
-                // Fallback to default
-                maxMemoryBytes = MAX_MEMORY;
+        // Get images used by this instance
+        Set<String> instanceImages = activeImagesByInstance.remove(instanceId);
+        
+        // Decrement reference counts
+        if (instanceImages != null) {
+            for (String imageKey : instanceImages) {
+                decrementImageRef(instanceId, imageKey);
             }
-        }).exceptionally(_ -> {
-            // Error getting system memory, default
-            maxMemoryBytes = MAX_MEMORY;
-            return null;
-        });
+        }
+        
+        // Remove layouts for this instance
+        layoutCache.entrySet().removeIf(entry -> 
+            entry.getValue().instanceId.equals(instanceId));
+        
+        // Clean up unused resources
+        cleanupUnusedImages(instanceId, false);
+    }
+    
+    private String generateInstanceId() {
+        return "i" + NoteUUID.createSafeUUID128() + "_" + Thread.currentThread().threadId();
+    }
+    
+    // ========== Memory Monitoring ==========
+    
+    /**
+     * Start background thread to monitor system memory
+     */
+    private void startMemoryMonitor() {
+        CompletableFuture.runAsync(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(MEMORY_CHECK_INTERVAL_MS);
+                    checkSystemMemory();
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        }, TaskUtils.getVirtualExecutor());
     }
     
     /**
-     * Check system memory and update pressure state
+     * Check system memory and warn if low (but don't limit cache)
      */
     private void checkSystemMemory() {
         long now = System.currentTimeMillis();
         if (now - lastMemoryCheck < MEMORY_CHECK_INTERVAL_MS) {
-            return; // Too soon since last check
+            return;
         }
         lastMemoryCheck = now;
         
@@ -237,313 +255,233 @@ public class LayoutResourceManager {
                 long totalKB = freeMemory.getMemTotalKB();
                 
                 double availablePercent = (availableKB * 100.0) / totalKB;
+                MemoryPressure oldPressure = memoryPressure;
                 
-                // System is running low on memory
-                if (availablePercent < 10.0) {
-                    fireMemoryError(MemoryErrorType.SYSTEM_MEMORY_LOW,
-                        String.format("System memory low: %.1f%% available", availablePercent),
-                        currentMemoryUsage, maxMemoryBytes);
-                    
-                    // Aggressively trim our caches
-                    aggressiveTrim();
+                if (availablePercent < SYSTEM_CRITICAL_THRESHOLD * 100) {
+                    memoryPressure = MemoryPressure.CRITICAL;
+                    if (oldPressure != MemoryPressure.CRITICAL) {
+                        memoryWarnings++;
+                        fireMemoryWarning(MemoryWarningType.SYSTEM_MEMORY_CRITICAL,
+                            String.format("System memory critically low: %.1f%% available", availablePercent),
+                            currentMemoryUsage, availableKB * 1024);
+                    }
+                } else if (availablePercent < SYSTEM_WARNING_THRESHOLD * 100) {
+                    memoryPressure = MemoryPressure.WARNING;
+                    if (oldPressure == MemoryPressure.NORMAL) {
+                        memoryWarnings++;
+                        fireMemoryWarning(MemoryWarningType.SYSTEM_MEMORY_LOW,
+                            String.format("System memory getting low: %.1f%% available", availablePercent),
+                            currentMemoryUsage, availableKB * 1024);
+                    }
+                } else {
+                    memoryPressure = MemoryPressure.NORMAL;
                 }
             }
         });
     }
     
     /**
-     * Update memory pressure state based on current usage
+     * Fire memory warning to listener
      */
-    private synchronized void updateMemoryPressure() {
-        double usagePercent = (currentMemoryUsage * 100.0) / maxMemoryBytes;
-        MemoryPressure oldPressure = memoryPressure;
-        
-        if (usagePercent >= CRITICAL_THRESHOLD * 100) {
-            memoryPressure = MemoryPressure.CRITICAL;
-            if (oldPressure != MemoryPressure.CRITICAL) {
-                memoryErrors++;
-                fireMemoryError(MemoryErrorType.LOW_MEMORY_CRITICAL,
-                    String.format("Critical memory pressure: %.1f%% used", usagePercent),
-                    currentMemoryUsage, maxMemoryBytes);
-            }
-        } else if (usagePercent >= WARNING_THRESHOLD * 100) {
-            memoryPressure = MemoryPressure.WARNING;
-            if (oldPressure == MemoryPressure.NORMAL) {
-                memoryWarnings++;
-                fireMemoryError(MemoryErrorType.LOW_MEMORY_WARNING,
-                    String.format("Memory pressure warning: %.1f%% used", usagePercent),
-                    currentMemoryUsage, maxMemoryBytes);
-            }
-        } else {
-            memoryPressure = MemoryPressure.NORMAL;
-        }
-        
-        // Auto-trim if above threshold
-        if (usagePercent >= AGGRESSIVE_TRIM_THRESHOLD * 100) {
-            aggressiveTrim();
-        }
-    }
-    
-    /**
-     * Fire memory error to listener
-     */
-    private void fireMemoryError(MemoryErrorType type, String message, long currentUsage, long maxMemory) {
-        if (errorListener != null) {
+    private void fireMemoryWarning(MemoryWarningType type, String message, long currentUsage, long systemAvailable) {
+        MemoryErrorListener listener = errorListener;
+        if (listener != null) {
             try {
-                errorListener.onMemoryError(type, message, currentUsage, maxMemory);
+                listener.onMemoryWarning(type, message, currentUsage, systemAvailable);
             } catch (Exception e) {
-                System.err.println("Error in memory error listener: " + e.getMessage());
+                System.err.println("Error in memory warning listener: " + e.getMessage());
             }
         }
-    }
-    
-    /**
-     * Check if we can allocate memory for new entry
-     */
-    private synchronized boolean canAllocate(long requiredBytes) {
-        if (currentMemoryUsage + requiredBytes <= maxMemoryBytes) {
-            return true;
-        }
-        
-        // Try to free memory
-        evictLeastRecentlyUsedImages(requiredBytes);
-        
-        return currentMemoryUsage + requiredBytes <= maxMemoryBytes;
     }
     
     // ========== Original Image Caching ==========
     
-    /**
-     * Get cached image or decode and cache
-     */
-    public synchronized BufferedImage getImage(NoteBytesImage imageData) throws IOException {
-        checkSystemMemory();
-        
-        String key = generateImageKey(imageData);
-        
-        CachedImage cached = imageCache.get(key);
+    public BufferedImage getImage(String hashId, String instanceId) throws IOException {
+        CachedImage cached = imageCache.get(hashId);
         if (cached != null) {
             cached.updateAccessTime();
-            imageCacheHits++;
+            markImageActive(instanceId, hashId);
             return cached.image;
         }
-        
-        // Cache miss - decode image
-        imageCacheMisses++;
-        BufferedImage image = imageData.getAsBufferedImage(false);
-        
+        return null;
+    }
+
+    public boolean addImage(String hashId, BufferedImage image, String instanceId){
+      
         if (image != null) {
-            long imageSize = CachedImage.calculateImageMemorySize(image);
-            
-            if (!canAllocate(imageSize)) {
-                fireMemoryError(MemoryErrorType.ALLOCATION_FAILED,
-                    "Cannot allocate memory for image: " + imageSize + " bytes",
-                    currentMemoryUsage, maxMemoryBytes);
-                // Return image without caching
-                return image;
-            }
-            
+
             CachedImage cachedImage = new CachedImage(image);
-            CachedImage old = imageCache.put(key, cachedImage);
-            
-            if (old != null) {
-                currentMemoryUsage -= old.memorySize;
-            }
+            imageCache.put(hashId, cachedImage);
+            markImageActive(instanceId, hashId);
             currentMemoryUsage += cachedImage.memorySize;
-            
-            updateMemoryPressure();
+            return true;
         }
-        
-        return image;
+        return false;
     }
     
-    // ========== Scaled Image Caching ==========
+    private boolean markImageActive(String instanceId, String imageKey) {
+        Set<String> instanceImages = activeImagesByInstance.get(instanceId);
+        if (instanceImages != null && instanceImages.add(imageKey)) {
+            // Newly added - increment reference count
+            CachedImage cached = imageCache.get(imageKey);
+            if (cached != null) {
+                return cached.addInstance(instanceId);
+            }
+        }
+        return false;
+    }
     
-    /**
-     * Get or create scaled image with specified algorithm
-     */
-    public synchronized BufferedImage getScaledImage(NoteBytesImage imageContent, int width, int height, 
-        ScalingAlgorithm algorithm) throws IOException 
-    {
-        checkSystemMemory();
-        
-        String cacheKey = generateScaledImageKey(imageContent, width, height, algorithm);
-        
-        CachedImage cached = scaledImageCache.get(cacheKey);
+    private boolean decrementImageRef(String instanceId, String imageKey) {
+        CachedImage cached = imageCache.get(imageKey);
         if (cached != null) {
-            cached.updateAccessTime();
-            scaledImageCacheHits++;
-            return cached.image;
+            return cached.removeInstance(instanceId);
         }
-        
-        // Cache miss - need to scale
-        scaledImageCacheMisses++;
-        
-        // Get original image
-        BufferedImage original = getImage(imageContent);
-        if (original == null) {
-            return null;
-        }
-        
-        // Don't scale if already correct size
-        if (original.getWidth() == width && original.getHeight() == height) {
-            return original;
-        }
-        
-        // Scale the image
-        BufferedImage scaled = ScalingUtils.scaleImage(original, width, height, algorithm);
-        
-        if (scaled != null) {
-            long scaledSize = CachedImage.calculateImageMemorySize(scaled);
-            
-            if (!canAllocate(scaledSize)) {
-                fireMemoryError(MemoryErrorType.ALLOCATION_FAILED,
-                    "Cannot allocate memory for scaled image: " + scaledSize + " bytes",
-                    currentMemoryUsage, maxMemoryBytes);
-                // Return scaled image without caching
-                return scaled;
-            }
-            
-            CachedImage cachedScaled = new CachedImage(scaled);
-            CachedImage old = scaledImageCache.put(cacheKey, cachedScaled);
-            
-            if (old != null) {
-                currentMemoryUsage -= old.memorySize;
-            }
-            currentMemoryUsage += cachedScaled.memorySize;
-            
-            updateMemoryPressure();
-        }
-        
-        return scaled;
+        return false;
     }
     
 
+    
     // ========== Layout Caching ==========
     
-    public synchronized LayoutEngine.LayoutResult getLayout(String segmentId) {
-        LayoutEngine.LayoutResult result = layoutCache.get(segmentId);
-        if (result != null) {
+    public LayoutEngine.LayoutResult getLayout(String layoutKey, String instanceId) {
+        String fullKey = instanceId + ":" + layoutKey;
+        CachedLayoutResult cached = layoutCache.get(fullKey);
+        
+        if (cached != null) {
+            cached.updateAccessTime();
             layoutCacheHits++;
-        } else {
-            layoutCacheMisses++;
+            return cached.result;
         }
-        return result;
+        
+        layoutCacheMisses++;
+        return null;
     }
     
-    public synchronized void cacheLayout(String segmentId, LayoutEngine.LayoutResult result) {
-        if (result == null) return;
-        layoutCache.put(segmentId, result);
+    public void cacheLayout(String layoutKey, LayoutEngine.LayoutResult result, String instanceId) {
+        if (result == null || instanceId == null) return;
+        
+        String fullKey = instanceId + ":" + layoutKey;
+        layoutCache.put(fullKey, new CachedLayoutResult(result, instanceId));
     }
     
-    public synchronized void clearLayoutCache() {
-        layoutCache.clear();
-    }
-    
-    // ========== Key Generation ==========
-    
-    private String generateImageKey(NoteBytesImage imageData) {
-        return Integer.toHexString(imageData.hashCode());
-    }
-    
-    private String generateScaledImageKey(NoteBytesImage image, int width, int height, ScalingAlgorithm algorithm) {
-        String imageHash = generateImageKey(image);
-        return imageHash + "_" + width + "x" + height + "_" + algorithm.getValue();
-    }
-    
-    // ========== Memory Eviction ==========
+    // ========== Lifecycle Management ==========
     
     /**
-     * Evict least recently used images to free memory
+     * Called when document is cleared in an instance
      */
-    private void evictLeastRecentlyUsedImages(long requiredBytes) {
-        long freedMemory = 0;
+    public void onDocumentCleared(String instanceId) {
+        if (instanceId == null) return;
         
-        // First try scaled images (they can be regenerated)
-        java.util.List<Map.Entry<String, CachedImage>> scaledEntries = 
-            new java.util.ArrayList<>(scaledImageCache.entrySet());
+        // Get current images for this instance
+        Set<String> instanceImages = activeImagesByInstance.get(instanceId);
         
-        scaledEntries.sort((e1, e2) -> 
-            Long.compare(e1.getValue().lastAccessTime, e2.getValue().lastAccessTime));
-        
-        for (Map.Entry<String, CachedImage> entry : scaledEntries) {
-            if (freedMemory >= requiredBytes) break;
-            
-            CachedImage cached = scaledImageCache.remove(entry.getKey());
-            if (cached != null) {
-                freedMemory += cached.memorySize;
-                currentMemoryUsage -= cached.memorySize;
+        // Decrement all references
+        if (instanceImages != null) {
+            for (String imageKey : instanceImages) {
+                decrementImageRef(instanceId, imageKey);
             }
+            instanceImages.clear();
         }
+    
+        // Clear layouts for this instance
+        layoutCache.entrySet().removeIf(entry -> 
+            entry.getValue().instanceId.equals(instanceId));
         
-        // If still need more, evict original images
-        if (freedMemory < requiredBytes) {
-            java.util.List<Map.Entry<String, CachedImage>> imageEntries = 
-                new java.util.ArrayList<>(imageCache.entrySet());
-            
-            imageEntries.sort((e1, e2) -> 
-                Long.compare(e1.getValue().lastAccessTime, e2.getValue().lastAccessTime));
-            
-            for (Map.Entry<String, CachedImage> entry : imageEntries) {
-                if (freedMemory >= requiredBytes) break;
-                
-                CachedImage cached = imageCache.remove(entry.getKey());
-                if (cached != null) {
-                    freedMemory += cached.memorySize;
-                    currentMemoryUsage -= cached.memorySize;
-                }
-            }
-        }
+        // Clean up unused resources
+        cleanupUnusedImages(true);
     }
     
     /**
-     * Aggressively free memory by clearing old entries
+     * Called when layout is invalidated (e.g., window resize)
      */
-    public synchronized void aggressiveTrim() {
-        long targetMemory = maxMemoryBytes / 2; // Trim to 50%
-        if (currentMemoryUsage > targetMemory) {
-            evictLeastRecentlyUsedImages(currentMemoryUsage - targetMemory);
-        }
+    public void onLayoutInvalidated(String instanceId) {
+        if (instanceId == null) return;
+        
+        // Clear layouts for this instance only
+        layoutCache.entrySet().removeIf(entry -> 
+            entry.getValue().instanceId.equals(instanceId));
     }
+    
+    /**
+     * Mark the start of a new render cycle for an instance
+     */
+    public void beginRenderCycle(String instanceId) {
+        if (instanceId == null) return;
+        
+        // Get current references
+        Set<String> instanceImages = activeImagesByInstance.get(instanceId);
+        
+        // Decrement old references
+        if (instanceImages != null) {
+            for (String imageKey : instanceImages) {
+                decrementImageRef(instanceId, imageKey);
+            }
+            instanceImages.clear();
+        }
+        
+    }
+    
+    /**
+     * Mark the end of a render cycle
+     */
+    public void endRenderCycle(String instanceId) {
+        // Periodically clean up unused resources
+        cleanupUnusedImages(true);
+    }
+    
+    private boolean isStaleImage(long lastAccessed){
+        long currentTime = System.currentTimeMillis();
+        return currentTime - lastAccessed > STALE_IMAGE_TIME; 
+    }
+
+    private void cleanupUnusedImages(boolean checkStale) {
+        cleanupUnusedImages(null, checkStale);
+    }
+    /**
+     * Remove images that are no longer referenced by any instance
+     */
+    private void cleanupUnusedImages(String instanceId, boolean checkStale) {
+        // Remove unreferenced original images
+        imageCache.entrySet().removeIf(entry -> {
+            CachedImage cachedImage = entry.getValue();
+            
+            if (cachedImage.isUnused() && checkStale ? isStaleImage(cachedImage.lastAccessTime.get()) : true ) {
+                currentMemoryUsage -= entry.getValue().memorySize;
+                return true;
+            }
+            return false;
+        });
+    }
+    
     
     // ========== Statistics & Info ==========
     
-    public synchronized long getMemoryUsage() {
+    public long getMemoryUsage() {
         return currentMemoryUsage;
     }
     
-    public synchronized double getMemoryUsageMB() {
+    public double getMemoryUsageMB() {
         return currentMemoryUsage / (1024.0 * 1024.0);
     }
     
-    public long getMaxMemory() {
-        return maxMemoryBytes;
-    }
-    
-    public synchronized double getMemoryUsagePercent() {
-        return (currentMemoryUsage * 100.0) / maxMemoryBytes;
-    }
-    
-    public synchronized MemoryPressure getMemoryPressure() {
+    public MemoryPressure getMemoryPressure() {
         return memoryPressure;
     }
     
-    public synchronized CacheStats getStats() {
+    public int getActiveInstanceCount() {
+        return activeImagesByInstance.size();
+    }
+    
+    public CacheStats getStats() {
         return new CacheStats(
             imageCache.size(),
-            scaledImageCache.size(),
             layoutCache.size(),
-            imageCacheHits,
-            imageCacheMisses,
-            scaledImageCacheHits,
-            scaledImageCacheMisses,
             layoutCacheHits,
             layoutCacheMisses,
             currentMemoryUsage,
-            maxMemoryBytes,
             memoryPressure,
             memoryWarnings,
-            memoryErrors
+            getActiveInstanceCount()
         );
     }
     
@@ -552,105 +490,61 @@ public class LayoutResourceManager {
      */
     public static class CacheStats {
         public final int imageCacheSize;
-        public final int scaledImageCacheSize;
         public final int layoutCacheSize;
-        public final long imageCacheHits;
-        public final long imageCacheMisses;
-        public final long scaledImageCacheHits;
-        public final long scaledImageCacheMisses;
         public final long layoutCacheHits;
         public final long layoutCacheMisses;
         public final long memoryUsage;
-        public final long maxMemory;
         public final MemoryPressure memoryPressure;
         public final long memoryWarnings;
-        public final long memoryErrors;
+        public final int activeInstances;
         
-        CacheStats(int imageCacheSize, int scaledImageCacheSize, int layoutCacheSize,
-                   long imageCacheHits, long imageCacheMisses,
-                   long scaledImageCacheHits, long scaledImageCacheMisses,
+        CacheStats(int imageCacheSize, int layoutCacheSize,
                    long layoutCacheHits, long layoutCacheMisses,
-                   long memoryUsage, long maxMemory,
-                   MemoryPressure memoryPressure,
-                   long memoryWarnings, long memoryErrors) {
+                   long memoryUsage, MemoryPressure memoryPressure,
+                   long memoryWarnings, int activeInstances) {
             this.imageCacheSize = imageCacheSize;
-            this.scaledImageCacheSize = scaledImageCacheSize;
             this.layoutCacheSize = layoutCacheSize;
-            this.imageCacheHits = imageCacheHits;
-            this.imageCacheMisses = imageCacheMisses;
-            this.scaledImageCacheHits = scaledImageCacheHits;
-            this.scaledImageCacheMisses = scaledImageCacheMisses;
             this.layoutCacheHits = layoutCacheHits;
             this.layoutCacheMisses = layoutCacheMisses;
             this.memoryUsage = memoryUsage;
-            this.maxMemory = maxMemory;
             this.memoryPressure = memoryPressure;
             this.memoryWarnings = memoryWarnings;
-            this.memoryErrors = memoryErrors;
+            this.activeInstances = activeInstances;
         }
         
-        public double getImageHitRate() {
-            long total = imageCacheHits + imageCacheMisses;
-            return total == 0 ? 0 : (imageCacheHits * 100.0) / total;
-        }
-        
-        public double getScaledImageHitRate() {
-            long total = scaledImageCacheHits + scaledImageCacheMisses;
-            return total == 0 ? 0 : (scaledImageCacheHits * 100.0) / total;
-        }
-        
+  
         public double getLayoutHitRate() {
             long total = layoutCacheHits + layoutCacheMisses;
             return total == 0 ? 0 : (layoutCacheHits * 100.0) / total;
         }
         
-        public double getMemoryUsagePercent() {
-            return (memoryUsage * 100.0) / maxMemory;
-        }
-        
         @Override
         public String toString() {
             return String.format(
-                "CacheStats[images=%d, scaled=%d, layouts=%d, imageHit=%.1f%%, scaledHit=%.1f%%, " +
-                "layoutHit=%.1f%%, memory=%.1fMB/%.1fMB (%.1f%%), pressure=%s, warnings=%d, errors=%d]",
-                imageCacheSize, scaledImageCacheSize, layoutCacheSize,
-                getImageHitRate(), getScaledImageHitRate(), getLayoutHitRate(),
+                "CacheStats[instances=%d, images=%d,  layouts=%d, " +
+                "layoutHit=%.1f%%, " +
+                "memory=%.1fMB, pressure=%s, warnings=%d]",
+                activeInstances, imageCacheSize, layoutCacheSize,
+                getLayoutHitRate(),
                 memoryUsage / (1024.0 * 1024.0),
-                maxMemory / (1024.0 * 1024.0),
-                getMemoryUsagePercent(),
                 memoryPressure,
-                memoryWarnings,
-                memoryErrors
+                memoryWarnings
             );
         }
     }
     
     // ========== Cleanup ==========
     
-    public synchronized void clearAll() {
+    /**
+     * Clear all caches (use with caution - affects all instances)
+     */
+    public void clearAll() {
         imageCache.clear();
-        scaledImageCache.clear();
         layoutCache.clear();
+        activeImagesByInstance.values().forEach(Set::clear);
+        activeScaledImagesByInstance.values().forEach(Set::clear);
         currentMemoryUsage = 0;
         memoryPressure = MemoryPressure.NORMAL;
-    }
-    
-    public synchronized void clearImageCache() {
-        imageCache.clear();
-        // Recalculate memory usage from scaled cache only
-        currentMemoryUsage = scaledImageCache.values().stream()
-            .mapToLong(img -> img.memorySize)
-            .sum();
-        updateMemoryPressure();
-    }
-    
-    public synchronized void clearScaledImageCache() {
-        scaledImageCache.clear();
-        // Recalculate memory usage from image cache only
-        currentMemoryUsage = imageCache.values().stream()
-            .mapToLong(img -> img.memorySize)
-            .sum();
-        updateMemoryPressure();
     }
     
     public void setMemoryErrorListener(MemoryErrorListener listener) {

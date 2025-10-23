@@ -8,10 +8,13 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.util.Duration;
+import io.netnotes.engine.crypto.HashServices;
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
 import io.netnotes.engine.noteBytes.NoteIntegerArray;
+import io.netnotes.engine.utils.MathHelpers;
 import io.netnotes.gui.fx.components.canvas.BufferedCanvasView;
+import io.netnotes.gui.fx.components.images.scaling.ScalingUtils;
 import io.netnotes.gui.fx.components.images.scaling.ScalingUtils.ScalingAlgorithm;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.GraphicsContextPool;
@@ -22,6 +25,7 @@ import io.netnotes.gui.fx.utils.TaskUtils;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -42,6 +46,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
   //  private static final int SCROLL_SPEED = 20;
     private static final int VIRTUAL_SCROLL_MARGIN = 200;
     
+    
 
     // ========== Render Queueing =======
 
@@ -54,8 +59,8 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     private LayoutEngine m_layoutEngine;
     private CursorSelectionSystem.CursorNavigator m_navigator;
 
-    private LayoutResourceManager m_resourceManager;
-    
+    private final LayoutResourceManager m_resourceManager;
+    private final String m_resourceManagerInstanceId;
     // ========== Layout State ==========
     
     private LayoutEngine.LayoutResult m_layoutResult;
@@ -115,7 +120,8 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     
     public BufferedLayoutArea(int width, int height) {
         super();
-        
+        m_resourceManager = LayoutResourceManager.getInstance();
+       m_resourceManagerInstanceId = m_resourceManager.registerInstance();
         // Enable real-time coalescing mode - keeps only latest render request
         isRealTimeTask().set(true);
         
@@ -124,6 +130,8 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         m_viewportWidth = width + VIEWPORT_BUFFER;
         m_viewportHeight = height + VIEWPORT_BUFFER;
         
+        
+
         m_segments = new NoteBytesArray();
         m_layoutEngine = new LayoutEngine();
         
@@ -140,8 +148,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         
         m_layoutDirty = true;
 
-        m_resourceManager = new LayoutResourceManager(50, 100, 1000);
-
+      
         setRenderMode(RenderMode.GENERATE);
         setFocusTraversable(true);
         setupEventHandlers();
@@ -499,6 +506,10 @@ public class BufferedLayoutArea extends BufferedCanvasView {
 
     
     // ========== Layout Computation ==========
+
+    public static String generateLayoutKey(byte[] bytes, int width, int height){
+        return HashServices.digestToUrlSafeString(bytes, 16) + "_" + width + "x" + height;
+    }
     
     private void computeLayout() {
         if (m_segments.size() == 0) {
@@ -515,36 +526,31 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         int availableHeight = m_preferredHeight - paddingTop - paddingBottom;
         
         // Generate cache key based on content + constraints
-        String layoutKey = generateLayoutKey(m_segments, availableWidth, availableHeight);
-        LayoutEngine.LayoutResult cached = m_resourceManager.getLayout(layoutKey);
+        String layoutKey = generateLayoutKey(m_segments.get(), availableWidth, availableHeight);
+        LayoutEngine.LayoutResult cached = m_resourceManager.getLayout(layoutKey, m_resourceManagerInstanceId);
         if (cached != null) {
             m_layoutResult = cached;
             updateScrollBounds();
             return;
         }
-
-        
         
         // Cache miss - compute layout
         LayoutEngine.Constraints constraints = LayoutEngine.Constraints.loose(
             availableWidth,
             availableHeight
         );
+
         
         m_layoutResult = m_layoutEngine.layout(m_segments, constraints);
         
         // Cache the result
         if (m_layoutResult != null) {
-            m_resourceManager.cacheLayout(layoutKey, m_layoutResult);
+            m_resourceManager.cacheLayout(layoutKey, m_layoutResult, m_resourceManagerInstanceId);
             updateScrollBounds();
         }
     }
 
-    private String generateLayoutKey(NoteBytesArray segments, int width, int height) {
-        // Use content hash + dimensions as key
-        return segments.hashCode() + "_" + width + "x" + height;
-    }
-
+   
     private void updateScrollBounds() {
         int availableWidth = m_preferredWidth - m_insets.left - m_insets.right;
         int availableHeight = m_preferredHeight - m_insets.top - m_insets.bottom;
@@ -620,24 +626,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         }
     }
 
-    /**
-     * Get the resource manager
-     */
-    public LayoutResourceManager getResourceManager() {
-        return m_resourceManager;
-    }
 
-    /**
-     * Set custom resource manager
-     */
-    public void setResourceManager(LayoutResourceManager resourceManager) {
-        if (resourceManager == null) {
-            m_resourceManager = resourceManager;
-        }else{
-            clearResourceCache();
-            m_resourceManager = resourceManager;
-        }
-    }
 
     /**
      * Clear all resource caches
@@ -649,24 +638,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
     }
 
 
-    /**
-     * Clear image cache only
-     */
-    public void clearImageCache() {
-        if (m_resourceManager != null) {
-            m_resourceManager.clearImageCache();
-        }
-    }
-
-    /**
-     * Clear layout cache only
-     */
-    public void clearLayoutCache() {
-        if (m_resourceManager != null) {
-            m_resourceManager.clearLayoutCache();
-        }
-    }
-
+   
 
     private void renderImage(Graphics2D g2d, LayoutSegment segment, Rectangle bounds, int offsetX, int offsetY) {
         NoteBytesImage imageContent = getImageContent(segment);
@@ -682,20 +654,31 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         int height = bounds.height - segment.getLayout().padding.top - segment.getLayout().padding.bottom;
         
         try {
+            
             // Get scaled image from cache (or scale it with specified algorithm)
             ScalingAlgorithm algorithm = segment.getLayout().scalingAlgorithm;
-            BufferedImage image = m_resourceManager.getScaledImage(imageContent, width, height, algorithm);
+
+            //local cached image
+            BufferedImage original = imageContent.getAsBufferedImage();
+
+            String hashId = imageContent.getHashId() + "_" + width + "x" + height;
             
-            if (image == null) {
-                renderImagePlaceholder(g2d, bounds, offsetX, offsetY, "Invalid image");
-                return;
+            // Don't scale if already correct size
+            BufferedImage scaledImage = original.getWidth() == width && original.getHeight() == height ? 
+                scaledImage = original :  m_resourceManager.getImage(hashId, m_resourceManagerInstanceId);
+            
+            boolean notCached = scaledImage == null;
+
+            scaledImage = notCached ? ScalingUtils.scaleImage(original, width, height, algorithm) : scaledImage;
+            
+            if(notCached){
+                m_resourceManager.addImage(hashId, scaledImage , hashId);
             }
             
-            
             // Draw image scaled to bounds
-             g2d.drawImage(image, x, y, null);
+             g2d.drawImage(scaledImage, x, y, null);
             
-        } catch (IOException e) {
+        } catch (Exception e) {
             System.err.println("Error rendering image: " + e.getMessage());
             renderImagePlaceholder(g2d, bounds, offsetX, offsetY, "Error: " + e.getMessage());
         }
@@ -732,7 +715,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             // Calculate and store aspect ratio
             int imgWidth = image.getWidth();
             int imgHeight = image.getHeight();
-            double aspectRatio = (double) imgHeight / imgWidth;
+            BigDecimal aspectRatio = MathHelpers.divideNearestNeighbor(imgWidth, imgHeight);
             
             // Store aspect ratio so layout engine can calculate height
             segment.getLayout().aspectRatio = aspectRatio;
@@ -740,7 +723,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             
         } catch (IOException e) {
             // If we can't get dimensions, just use auto for both
-            segment.getLayout().aspectRatio = -1.0;
+            segment.getLayout().aspectRatio = null;
             segment.getLayout().height = LayoutSegment.Dimension.auto();
         }
         
@@ -753,13 +736,17 @@ public class BufferedLayoutArea extends BufferedCanvasView {
         if (binaryContent == null) {
             return null;
         }
-        
-        // Convert to NoteBytesImage if not already
-        if (binaryContent instanceof NoteBytesImage) {
-            return (NoteBytesImage) binaryContent;
-        } else {
-            return new NoteBytesImage(binaryContent.get());
+        //gets existing content, or converts and caches content
+        boolean isCached = binaryContent instanceof NoteBytesImage ;
+        NoteBytesImage content = isCached ? (NoteBytesImage) binaryContent
+            : new NoteBytesImage(binaryContent.get(), true);
+
+        if(!isCached){
+            //clear byte array - has been converted to BufferedImage
+            content.clearBytes();
+            segment.setBinaryContent(content);
         }
+        return content;
     }
     
     private void renderImagePlaceholder(Graphics2D g2d, Rectangle bounds, int offsetX, int offsetY, String message) {
@@ -1934,8 +1921,7 @@ public class BufferedLayoutArea extends BufferedCanvasView {
             });
             // Clear resource caches
             if (m_resourceManager != null) {
-                m_resourceManager.clearAll();
-                m_resourceManager = null;
+                m_resourceManager.unregisterInstance(m_resourceManagerInstanceId);
             }
             
             m_segments = null;

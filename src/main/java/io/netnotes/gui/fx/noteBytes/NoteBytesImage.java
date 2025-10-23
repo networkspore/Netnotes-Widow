@@ -7,7 +7,9 @@ import java.io.IOException;
 import javax.imageio.ImageIO;
 
 import javafx.scene.image.Image;
+import io.netnotes.engine.crypto.HashServices;
 import io.netnotes.engine.noteBytes.NoteBytes;
+import io.netnotes.engine.noteBytes.processing.EncodingHelpers;
 import io.netnotes.engine.noteBytes.processing.NoteBytesMetaData;
 import io.netnotes.gui.fx.display.ImageHelpers;
 import io.netnotes.gui.fx.display.ImageHelpers.ImageFormat;
@@ -21,17 +23,32 @@ public class NoteBytesImage extends NoteBytes {
     private Integer m_cachedHeight = null;
     private String m_cachedFormat = null;
 
+    private String m_hashId = null;
+
     public NoteBytesImage(byte[] bytes) {
-        super(bytes, NoteBytesMetaData.IMAGE_TYPE);
+        this(bytes, true);
     }
 
-    public NoteBytesImage(byte[] bytes, boolean enableCache) {
+    public NoteBytesImage(byte[] bytes, boolean enableCache){
         super(bytes, NoteBytesMetaData.IMAGE_TYPE);
         m_cacheEnabled = enableCache;
+        m_cachedFormat = ImageHelpers.detectImageFormat(bytes);
+        if(enableCache && !m_cachedFormat.equals(ImageFormat.UNKNOWN.getValue())){
+            try{
+                m_bufferedImageCache = getAsBufferedImage();
+                m_cachedWidth = m_bufferedImageCache.getWidth();
+                m_cachedHeight = m_bufferedImageCache.getHeight();
+                
+            }catch(IOException e){
+                System.err.println("Warning: noteBytesImage decoding failed");
+            }
+        }
+        m_hashId = getHashId();
     }
 
     public NoteBytesImage(NoteBytes noteBytes) {
         super(noteBytes.get(), NoteBytesMetaData.IMAGE_TYPE);
+        m_hashId = getHashId();
     }
     
     public NoteBytesImage(BufferedImage image, String format) throws IOException {
@@ -40,6 +57,7 @@ public class NoteBytesImage extends NoteBytes {
         m_cachedWidth = image.getWidth();
         m_cachedHeight = image.getHeight();
         m_cachedFormat = format.toUpperCase();
+        m_hashId = getHashId();
     }
 
     public static NoteBytesImage of(Image image) throws IOException{
@@ -52,6 +70,18 @@ public class NoteBytesImage extends NoteBytes {
 
     public static NoteBytesImage of(BufferedImage image, String encoding) throws IOException{
         return new NoteBytesImage(ImageHelpers.encodeImage(image, encoding));
+    }
+
+    public String getHashId(){
+        byte[] bytes = get();
+        if(m_hashId == null){
+            if(bytes.length > 0){
+                m_hashId = EncodingHelpers.encodeUrlSafeString(HashServices.digestBytesToBytes(bytes, 16));
+            }else{
+                m_hashId = "NONE";
+            }
+        }
+        return m_hashId;
     }
 
 
@@ -113,6 +143,10 @@ public class NoteBytesImage extends NoteBytes {
      */
     public BufferedImage getCachedImage() {
         return m_bufferedImageCache;
+    }
+
+    public void setCachedImage(BufferedImage image) {
+        m_bufferedImageCache = image;
     }
     
     /**
@@ -231,6 +265,10 @@ public class NoteBytesImage extends NoteBytes {
         copy.m_cachedFormat = this.m_cachedFormat;
         // Don't copy the BufferedImage cache (too heavy)
         return copy;
+    }
+
+    public void clearBytes(){
+        super.clear();
     }
     
     @Override

@@ -1,5 +1,6 @@
 package io.netnotes.gui.fx.components.layout;
 
+import io.netnotes.engine.noteBytes.NoteBigDecimal;
 import io.netnotes.engine.noteBytes.NoteBoolean;
 import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteDouble;
@@ -9,11 +10,13 @@ import io.netnotes.engine.noteBytes.NoteBytesArray;
 import io.netnotes.engine.noteBytes.NoteBytesObject;
 import io.netnotes.engine.noteBytes.NoteString;
 import io.netnotes.engine.noteBytes.collections.NoteBytesPair;
+import io.netnotes.engine.noteBytes.processing.ByteDecoding;
 import io.netnotes.engine.noteBytes.processing.NoteBytesMetaData;
 import io.netnotes.gui.fx.components.images.scaling.ScalingUtils.ScalingAlgorithm;
 import io.netnotes.gui.fx.noteBytes.NoteBytesImage;
 
 import java.awt.*;
+import java.math.BigDecimal;
 
 /**
  * Foundation for a unified layout/editing system.
@@ -212,9 +215,7 @@ public class LayoutSegment {
             return auto();
         }
         
-        /**
-         * Save to NoteBytes - pure binary, no string conversion!
-         */
+   
         public NoteBytes toNoteBytes() {
             return new NoteBytesObject(new NoteBytesPair[]{
                 new NoteBytesPair("unit", new NoteInteger(unit.getValue())),
@@ -268,7 +269,7 @@ public class LayoutSegment {
         public Insets padding = new Insets(0, 0, 0, 0);
         
         public int zIndex = 0;
-        public double aspectRatio = -1.0; // -1 means no aspect ratio constraint
+        public BigDecimal aspectRatio = null;
         public ScalingAlgorithm scalingAlgorithm = ScalingAlgorithm.BILINEAR;
     
         public Color backgroundColor = null;
@@ -331,7 +332,7 @@ public class LayoutSegment {
             // Aspect ratio - direct double
             NoteBytes aspectRatioNb = nbo.get("aspectRatio") != null ? nbo.get("aspectRatio").getValue() : null;
             if (aspectRatioNb != null) {
-                props.aspectRatio = aspectRatioNb.getAsDouble();
+                props.aspectRatio = ByteDecoding.readAsBigDecimal(aspectRatioNb);
             }
 
             NoteBytes scalingAlgNb = nbo.get("scalingAlgorithm") != null ? 
@@ -371,10 +372,8 @@ public class LayoutSegment {
             
             return props;
         }
-        
-        /**
-         * Save to binary object - pure binary types!
-         */
+
+    
         public NoteBytesObject toNoteBytesObject() {
             NoteBytesPair[] pairs = {
                 new NoteBytesPair("display", new NoteInteger(display.getValue())),
@@ -387,7 +386,7 @@ public class LayoutSegment {
                 new NoteBytesPair("y", y.toNoteBytes()),
                 
                 new NoteBytesPair("zIndex", new NoteInteger(zIndex)),
-                new NoteBytesPair("aspectRatio", new NoteDouble(aspectRatio)),
+                new NoteBytesPair("aspectRatio", new NoteBigDecimal(aspectRatio)),
                 new NoteBytesPair("scalingAlgorithm", new NoteInteger(scalingAlgorithm.getValue())),
                 new NoteBytesPair("borderWidth", new NoteInteger(borderWidth)),
                 
@@ -886,7 +885,7 @@ public class LayoutSegment {
         return this;
     }
     
-    public LayoutSegment withAspectRatio(double aspectRatio) {
+    public LayoutSegment withAspectRatio(BigDecimal aspectRatio) {
         m_layout.aspectRatio = aspectRatio;
         m_dataDirty = true;
         return this;

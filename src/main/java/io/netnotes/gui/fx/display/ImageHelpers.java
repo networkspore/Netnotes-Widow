@@ -4,6 +4,7 @@ import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
+import java.awt.image.DataBuffer;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -1677,5 +1678,44 @@ public class ImageHelpers {
                 return false;
         }
         return true;
+    }
+
+    public static long getBufferedImageSizeInBytes(BufferedImage image) {
+        if (image == null) {
+            return 0;
+        }
+
+        // Get the DataBuffer which holds the raw pixel data
+        DataBuffer dataBuffer = image.getRaster().getDataBuffer();
+
+        // The size of the DataBuffer in units (e.g., bytes, shorts, ints)
+        int dataBufferSize = dataBuffer.getSize();
+
+        // The number of bytes per unit in the DataBuffer
+        // For example, DataBuffer.TYPE_BYTE means 1 byte per unit,
+        // DataBuffer.TYPE_INT means 4 bytes per unit.
+        int bytesPerUnit;
+        switch (dataBuffer.getDataType()) {
+            case DataBuffer.TYPE_BYTE:
+                bytesPerUnit = 1;
+                break;
+            case DataBuffer.TYPE_SHORT:
+            case DataBuffer.TYPE_USHORT:
+                bytesPerUnit = 2;
+                break;
+            case DataBuffer.TYPE_INT:
+                bytesPerUnit = 4;
+                break;
+            case DataBuffer.TYPE_FLOAT:
+                bytesPerUnit = 4;
+                break;
+            case DataBuffer.TYPE_DOUBLE:
+                bytesPerUnit = 8;
+                break;
+            default:
+                bytesPerUnit = 1; // Default to 1 byte if type is unknown
+        }
+
+        return (long) dataBufferSize * bytesPerUnit;
     }
 }
