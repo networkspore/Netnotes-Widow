@@ -352,6 +352,8 @@
     -fx-background-color: #33333350;
 }
 
+  
+
 #xBtn{
     -fx-font-weight: bold;
     -fx-max-height:14;
@@ -1374,12 +1376,30 @@
 }
 
 
+#logoTabBtn {
+    -fx-font-family: 'OCR A Extended';
+    -fx-font-size: 22px;
+    -fx-font-weight: bold;
+
+    -fx-background-color: transparent;
+    -fx-opacity: .8;
+    -fx-min-height: 50;
+    -fx-min-width: 50;
+}
+
+#logoTabBtn:hover {   
+    -fx-opacity: 1;
+    -fx-background-color: #3c3c3c;
+    -fx-text-fill: #ffffff;
+}
+
+
 
 #menuTabBtn {
     -fx-background-color: transparent;
     -fx-opacity: .8;
-    -fx-padding: 7 5 5 5;
-    -fx-alignment: center;
+    -fx-min-height: 50;
+    -fx-min-width: 50;
 }
 
 #menuTabBtn:hover {   
@@ -1388,22 +1408,12 @@
     -fx-text-fill: #ffffff;
 }
 
-
-
-#menuTabBtn:hover {   
-    -fx-opacity: 1;
-    -fx-background-color: #3c3c3c;
-    -fx-text-fill: #ffffff;
-}
 
 #minimizedMenuBtn {
     -fx-background-color:radial-gradient(center 2% 50%, radius 100%, #777777 2%, #88888800 8%, transparent 100%);
     -fx-opacity: .8;
     -fx-min-height: 50;
     -fx-min-width: 50;
-    -fx-max-width: 50;
-    -fx-alignment: center;
-    -fx-padding: 0 0 0 5;
 }
 
 #minimizedMenuBtn:hover{
@@ -1413,16 +1423,15 @@
 #activeMenuBtn {
     -fx-background-color:linear-gradient(to right, #ffffff 0%, #111111 4%, #111111 100%);
     -fx-opacity: .8;
-    -fx-min-height: 57;
-    -fx-min-width: 57;
-    -fx-max-width: 57;
-    -fx-padding: 0 0 0 5;
-    -fx-alignment: center;
+    -fx-min-height: 50;
+    -fx-min-width: 50;
 }
+
 #activeMenuBtn:hover {
    
     -fx-opacity: 1;
 }
+
 
 
 #backgroundImage{

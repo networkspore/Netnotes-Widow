@@ -205,12 +205,7 @@ public class InitializeApp extends Application {
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            // Force termination after small delay
-            new Thread(() -> {
-                try { Thread.sleep(500); } catch (InterruptedException ignored) {}
-                System.err.println("Forcing System.exit(0)");
-                System.exit(0);
-            }, "ForceExitThread").start();
+            System.exit(0);
         }
 
         

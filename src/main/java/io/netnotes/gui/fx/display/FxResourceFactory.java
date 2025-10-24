@@ -35,7 +35,7 @@ public class FxResourceFactory {
 
     public final static Font openSansTxt;
     public final static Font openSansSmall;
-    public final static Font mainFont;
+    public final static Font HeadingFont;
     public final static Font txtFont;
     public final static Font titleFont;
     public final static Font smallFont;
@@ -83,7 +83,7 @@ public class FxResourceFactory {
 
         openSansTxt = Font.font(EMOJI_FONT_FAMILY, FontWeight.BOLD, 16);
         openSansSmall = Font.font(EMOJI_FONT_FAMILY , FontWeight.BOLD, 12);
-        mainFont =  Font.font(PRIMARY_FONT_FAMILY, FontWeight.BOLD, 20);
+        HeadingFont =  Font.font(PRIMARY_FONT_FAMILY, FontWeight.BOLD, 20);
         txtFont = Font.font(PRIMARY_FONT_FAMILY, 18);
         titleFont = Font.font(PRIMARY_FONT_FAMILY, FontWeight.BOLD, 16);
         smallFont = Font.font(PRIMARY_FONT_FAMILY, 14);

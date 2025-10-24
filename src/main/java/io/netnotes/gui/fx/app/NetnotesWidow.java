@@ -32,7 +32,7 @@ import javafx.stage.Stage;
 
 public class NetnotesWidow {
 
-    public static final String NAME = "Netnotes: Widow";
+    public static final String NAME = "Netnotes";
 
     private AppInterface m_appInterface;
     private final Stage m_appStage;

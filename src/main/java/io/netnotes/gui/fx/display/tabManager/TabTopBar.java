@@ -4,7 +4,6 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
-import javafx.scene.control.Label;
 import javafx.scene.control.Button;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
@@ -48,10 +47,6 @@ public class TabTopBar extends HBox {
         barIconView.setPreserveRatio(true);
         barIconView.setMouseTransparent(true);
         
-        // Title
-        Label titleLabel = new Label(titleString);
-        titleLabel.setFont(FxResourceFactory.titleFont);
-        titleLabel.setTextFill(FxResourceFactory.txtColor);
 
         closeBtn.setPadding(new Insets(0, 5, 0, 3));
         closeBtn.setId("closeBtn");
@@ -90,10 +85,9 @@ public class TabTopBar extends HBox {
         StackPane titleOverlayPane = new StackPane();
         HBox.setHgrow(titleOverlayPane, Priority.ALWAYS);
         titleOverlayPane.setAlignment(Pos.CENTER_LEFT);
-        titleOverlayPane.getChildren().addAll(titleLabel, tabBar, buttonsBox);
+        titleOverlayPane.getChildren().addAll( tabBar, buttonsBox);
         
 
-        StackPane.setAlignment(titleLabel, Pos.CENTER);
         StackPane.setAlignment(tabBar, Pos.CENTER_LEFT);
         StackPane.setAlignment(buttonsBox, Pos.CENTER_RIGHT);
 

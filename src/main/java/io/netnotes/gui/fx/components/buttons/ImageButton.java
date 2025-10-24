@@ -20,7 +20,7 @@ public class ImageButton extends Button {
 
         this.setGraphic(m_imageView);
         this.setId("startImageBtn");
-        this.setFont(FxResourceFactory.mainFont);
+        this.setFont(FxResourceFactory.HeadingFont);
         this.setContentDisplay(ContentDisplay.TOP);
     }
 

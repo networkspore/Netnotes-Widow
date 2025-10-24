@@ -28,7 +28,7 @@ public class StatusStageHelpers {
         Button imageButton = new Button(title);
         imageButton.setGraphic(btnImageView);
         imageButton.setId("startImageBtn");
-        imageButton.setFont(FxResourceFactory.mainFont);
+        imageButton.setFont(FxResourceFactory.HeadingFont);
         imageButton.setContentDisplay(ContentDisplay.TOP);
         imageButton.setGraphicTextGap(20);
 

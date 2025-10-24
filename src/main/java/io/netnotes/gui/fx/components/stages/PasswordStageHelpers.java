@@ -42,7 +42,7 @@ public class PasswordStageHelpers {
         Button imageButton = new Button(heading);
         imageButton.setGraphic(btnImageView);
         imageButton.setId("startImageBtn");
-        imageButton.setFont(FxResourceFactory.mainFont);
+        imageButton.setFont(FxResourceFactory.HeadingFont);
         imageButton.setContentDisplay(ContentDisplay.TOP);
         imageButton.setGraphicTextGap(20);
 
@@ -114,7 +114,7 @@ public class PasswordStageHelpers {
         Button imageButton = new Button(heading);
         imageButton.setGraphic(btnImageView);
         imageButton.setId("startImageBtn");
-        imageButton.setFont(FxResourceFactory.mainFont);
+        imageButton.setFont(FxResourceFactory.HeadingFont);
         imageButton.setContentDisplay(ContentDisplay.TOP);
         imageButton.setGraphicTextGap(20);
 

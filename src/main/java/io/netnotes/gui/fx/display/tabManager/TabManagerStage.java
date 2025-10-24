@@ -1,11 +1,11 @@
 package io.netnotes.gui.fx.display.tabManager;
 
 import javafx.beans.property.SimpleObjectProperty;
+import javafx.geometry.Insets;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
@@ -59,7 +59,7 @@ public class TabManagerStage implements TabWindow {
         m_smallIcon15 = smallIcon15;
         m_appIcon100 = windowIcon100;
         m_onClose = onClose;
-
+    
 
         DeferredLayoutManager.registerStage(stage, _ -> {
             // Callback for stage-level positioning
@@ -76,12 +76,12 @@ public class TabManagerStage implements TabWindow {
         // Create close button
         BufferedButton closeBtn = new BufferedButton(FxResourceFactory.closeImg,20);
         closeBtn.setOnAction(_ -> m_onClose.run());
-        
+     
         // Create top bar with tab management
         topBar = new TabTopBar(m_smallIcon15, m_title, closeBtn, stage, this);
         
         // Create sidebar
-        sideBar = new SideBarPanel(topBar.heightProperty());
+        sideBar = new SideBarPanel(title, topBar.heightProperty());
         
         // Create content area
         contentArea = new StackPane();
@@ -92,7 +92,7 @@ public class TabManagerStage implements TabWindow {
         root.setTop(topBar);
         root.setLeft(sideBar);
         root.setCenter(contentArea);
-        
+        root.setPadding(new Insets(0));
         // Create scene
         this.scene = new Scene(root, DEFAULT_WIDTH, DEFAULT_HEIGHT);
         this.scene.setFill(null);
@@ -201,7 +201,7 @@ public class TabManagerStage implements TabWindow {
         });
         
         // Listen for sidebar expand/collapse
-        sideBar.getM_expandButton().setOnAction(_ -> {
+        sideBar.getExpandButton().setOnAction(_ -> {
             sideBar.toggleExpanded();
             DeferredLayoutManager.markDirty(contentArea);
             NoteBytesArray currentTabId = m_currentTabIdProperty.get();

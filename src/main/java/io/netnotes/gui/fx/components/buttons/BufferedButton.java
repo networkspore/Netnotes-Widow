@@ -12,7 +12,7 @@ import javafx.scene.image.Image;
 public class BufferedButton extends Button {
 
     public final static NoteBytesReadOnly ON_MOUSE_PRESSED_EFFECT_ID = new NoteBytesReadOnly("onMousePressed");
-    public final static double DEFAULT_DARKEN_AMOUNT = -.7;
+    public final static double DEFAULT_DARKEN_AMOUNT = -.4;
     private BufferedImageView m_imgBufView;
     private boolean m_isPressedEffects = true;
 
