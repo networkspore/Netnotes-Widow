@@ -1,8 +1,6 @@
 package io.netnotes.gui.fx.app;
 
 import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
-import java.security.spec.InvalidKeySpecException;
 
 import io.netnotes.engine.noteBytes.NoteBytesEphemeral;
 import io.netnotes.engine.noteFiles.SettingsData;
@@ -10,11 +8,13 @@ import io.netnotes.engine.noteFiles.SettingsData.InvalidPasswordException;
 import io.netnotes.gui.fx.components.fields.PassField;
 import io.netnotes.gui.fx.components.notifications.Alerts;
 import io.netnotes.gui.fx.components.stages.PasswordStageHelpers;
+import io.netnotes.gui.fx.components.stages.StatusStageHelpers;
 import io.netnotes.gui.fx.display.FxResourceFactory;
-import io.netnotes.logging.Log;
+import io.netnotes.gui.fx.utils.TaskUtils;
 import javafx.application.Application;
 import javafx.application.HostServices;
 import javafx.application.Platform;
+import javafx.scene.Scene;
 import javafx.scene.control.ButtonType;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
@@ -34,27 +34,44 @@ public class InitializeApp extends Application {
             }
         }catch(IOException e){
             Alerts.showAndWaitErrorAlert("Critical Failure", e.toString(), appStage, ButtonType.CLOSE);
+            e.printStackTrace();
             shutdownNow();
         }
     }
 
     private void login(Stage appStage){
-        
+        Scene verificationScene = StatusStageHelpers.getTransitionScene(FxResourceFactory.iconImage15, 
+            FxResourceFactory.logoImage256, "Password Verification - Netnotes", "Verifying...");
+
          PasswordStageHelpers.enterPassword("Login",FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
             FxResourceFactory.logoImage256, appStage, 
             _->{ shutdownNow(); }, 
             passField->{
+                Scene prevScene = appStage.getScene();
+                appStage.setScene(verificationScene);
+                appStage.centerOnScreen();
                 try(
                     NoteBytesEphemeral password = passField.getEphemeralPassword();
                 ){
-                    SettingsData settingsData = SettingsData.readSettings(password);
-                    startWidow(appStage, settingsData);
-                }catch (InvalidPasswordException e) {
-                    
-                } catch (InvalidKeySpecException | NoSuchAlgorithmException | IOException e) {
-                    Alerts.showAndWaitErrorAlert("Fatal Error",  "Settings data is inaccessible:\n\t\t" + e.toString(), 
-                        appStage,ButtonType.CLOSE);
-                    shutdownNow();
+                    SettingsData.readSettings(password, TaskUtils.getVirtualExecutor()).whenComplete((settingsData, ex)->{
+                        if(ex == null){
+                            TaskUtils.noDelay(_->{
+                                startWidow(appStage, settingsData);
+                            });
+                        }else{
+                            Throwable cause = ex.getCause();
+                            if(!(cause instanceof InvalidPasswordException)){
+                                passField.clear();
+                                appStage.setScene(prevScene);
+                                appStage.centerOnScreen();
+
+                            }else{
+                                Alerts.showAndWaitErrorAlert("Critical Error", ex.getMessage() + ":\n\n\t" + cause.toString(), 
+                                    appStage, ButtonType.CLOSE);
+                                shutdownNow();
+                            }
+                        }
+                    });
                 }
             }
         );
@@ -67,7 +84,6 @@ public class InitializeApp extends Application {
         final PassField passField = new PassField();
         final Text passText = new Text(createPassString);
 
-        
         PasswordStageHelpers.createPassword("Create Password",FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
             FxResourceFactory.logoImage256, appStage, 
             _->{
@@ -94,20 +110,25 @@ public class InitializeApp extends Application {
                             ? (NoteBytesEphemeral) passUserData : null;
                     ){
                         if(firstPassword != null && password.equals(firstPassword)){
-                           
-                            SettingsData settingsData = null;
-                            try{
-                                settingsData = SettingsData.createSettings(password);
-                            }catch(Exception failed){
-                                Alerts.showAndWaitErrorAlert("Fatal Error", "Failed to create password:\n\t\t" 
-                                    + failed.toString(), appStage,ButtonType.CLOSE);
-                                shutdownNow();
-                            }
-                            if(settingsData != null){
-                                startWidow(appStage, settingsData);
-                            }
+                            Scene scene = StatusStageHelpers.getTransitionScene(FxResourceFactory.iconImage15, FxResourceFactory.logoImage256,
+                                    "Initializizing - Netnotes", "Initializing...");
+                            appStage.setScene(scene);
+                        
+                            SettingsData.createSettings(password, TaskUtils.getVirtualExecutor())
+                                .whenComplete((settingsData,ex)->{
+                                    if(ex == null){
+                                        startWidow(appStage, settingsData);
+                                    }else{
+                                        Throwable failed = ex.getCause();
+                                        failed.printStackTrace();
+                                        Alerts.showAndWaitErrorAlert("Critical Error", ex.getMessage() + 
+                                            ":\n\t\t" + failed.toString(), appStage,ButtonType.CLOSE);
+                                        shutdownNow();
+                                    }
+                                });
                         }
                     }finally{
+
                         passField.setUserData(null);
                         passField.escape();
                     }
@@ -128,6 +149,7 @@ public class InitializeApp extends Application {
 
     }
 
+
     public static void startWidow(Stage appStage, SettingsData settingsData){
         m_widow = new NetnotesWidow(settingsData, appStage, new AppInterface() {
             @Override
@@ -143,7 +165,7 @@ public class InitializeApp extends Application {
                 return getParameters();
             }
         });
-        m_widow.start();
+        TaskUtils.noDelay(_->m_widow.start());
     }
 
     private static void shutdownNow() {

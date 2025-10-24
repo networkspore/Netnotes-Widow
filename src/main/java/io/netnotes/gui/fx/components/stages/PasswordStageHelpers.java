@@ -35,7 +35,7 @@ public class PasswordStageHelpers {
         Button closeBtn = new Button();
         TopBar titleBox = new TopBar(smallIcon15, heading + " - " + title, closeBtn, stage);
 
-    ImageView btnImageView = new ImageView(windowIcon100);
+        ImageView btnImageView = new ImageView(windowIcon100);
         btnImageView.setFitHeight(100);
         btnImageView.setPreserveRatio(true);
 

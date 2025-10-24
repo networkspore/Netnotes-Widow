@@ -8,6 +8,8 @@ import io.netnotes.gui.fx.components.notifications.Alerts;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
+import javafx.application.Platform;
+import javafx.beans.value.ChangeListener;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.input.KeyCode;
@@ -23,6 +25,8 @@ public class PassField extends Label implements AutoCloseable {
     public String m_focusedChar = FOCUSED_CHAR;
     public String m_unfocusedChar = UNFOCUSED_CHAR;
 
+    private boolean m_isDisabled = false;
+
     private final Timeline m_cursorDelayTimeline;
 
     private NoteBytesEphemeral m_passwordBytes = new NoteBytesEphemeral(new byte[MAX_PASSWORD_BYTE_LENGTH]);
@@ -33,16 +37,13 @@ public class PassField extends Label implements AutoCloseable {
     private Consumer<PassField> m_onAction = null;
     private boolean m_cursorVisible = true;
 
+    private ChangeListener<Boolean> m_focusListener = null;
+
     public PassField() {
         super();
         setFocusTraversable(true);
-        focusedProperty().addListener((_, _, _) -> {
-            updateDisplay();
-        });
 
-        // Handle control keys (backspace, navigation, etc.)
         setOnKeyPressed(this::handleControlKeys);
-        // Handle actual character input
         setOnKeyTyped(this::handleCharacterInput);
         
         updateDisplay();
@@ -51,15 +52,20 @@ public class PassField extends Label implements AutoCloseable {
                 new KeyFrame(Duration.millis(FxResourceFactory.CURSOR_DELAY), _ -> toggleCursor()));
         m_cursorDelayTimeline.setCycleCount(Timeline.INDEFINITE);
 
+        m_focusListener = (_, _, isNowFocused) -> {
+            handleFocus(isNowFocused);
+        };
          // focus control
-        focusedProperty().addListener((_, _, isNowFocused) -> {
-            if (isNowFocused) {
-                m_cursorDelayTimeline.play();
-            } else {
-                m_cursorDelayTimeline.stop();
-                setText(m_unfocusedChar);
-            }
-        });
+        focusedProperty().addListener(m_focusListener);
+    }
+
+    private void handleFocus(boolean isNowFocused){
+        if (isNowFocused) {
+            m_cursorDelayTimeline.play();
+        } else {
+            m_cursorDelayTimeline.stop();
+            setText(m_unfocusedChar);
+        }
     }
 
     private void toggleCursor() {
@@ -179,6 +185,31 @@ public class PassField extends Label implements AutoCloseable {
         this.m_unfocusedChar = unfocusedChar;
     }
 
+    public boolean isInputDisabled(){
+        return m_isDisabled;
+    }
+
+    public void disableInput(){
+        if(m_isDisabled){
+            m_isDisabled = true;
+            setOnKeyPressed(null);
+            // Handle actual character input
+            setOnKeyTyped(null);
+            m_cursorDelayTimeline.stop();
+            focusedProperty().removeListener(m_focusListener);
+            handleFocus(false);
+        }
+    }
+
+    public void enableInput(){
+        if(!m_isDisabled){
+            m_isDisabled = false;
+            setOnKeyPressed(this::handleControlKeys);
+            setOnKeyTyped(this::handleCharacterInput);
+            focusedProperty().addListener(m_focusListener);
+            Platform.runLater(()->requestFocus());
+        }
+    }
 
 
     public void escape(){

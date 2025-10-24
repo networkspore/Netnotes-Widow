@@ -38,7 +38,7 @@ public class NetnotesWidow {
     private final Stage m_appStage;
     private final SettingsData m_settingsData;
     private final AppData m_appData;
-    private final TabManagerStage m_tabManagerStage;
+    private TabManagerStage m_tabManagerStage;
 
     private Map<NoteBytesReadOnly, IWidowApp> m_widowApps = new ConcurrentHashMap<>();
 
@@ -51,6 +51,7 @@ public class NetnotesWidow {
         m_appStage = appStage;
         m_appInterface = appInterface;
         m_settingsData = settingsData;
+        System.out.println("Starting App,,,");
         m_appData = new AppData(settingsData);
         m_tabManagerStage = new TabManagerStage(m_appStage, TITLE, FxResourceFactory.iconImage15, FxResourceFactory.logoImage256, 
             ()->stop());
@@ -59,10 +60,7 @@ public class NetnotesWidow {
     public void start(){
         if(!m_isStarted){
             m_isStarted = true;
-
-            m_tabManagerStage.getSideBar().initializeLayout(m_appStage);
-            
-            
+            m_tabManagerStage.start();
         }
     }
 
