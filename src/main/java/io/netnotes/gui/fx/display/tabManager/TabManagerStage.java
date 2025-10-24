@@ -5,6 +5,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
@@ -38,7 +39,6 @@ public class TabManagerStage implements TabWindow {
     private SideBarPanel sideBar;
     private StackPane contentArea;
     
-    private boolean m_started = false;
     private String m_title;
     private Image m_smallIcon15;
     private Image m_appIcon100;
@@ -59,72 +59,66 @@ public class TabManagerStage implements TabWindow {
         m_smallIcon15 = smallIcon15;
         m_appIcon100 = windowIcon100;
         m_onClose = onClose;
-    }
 
-    public void start(){
-        if(!m_started){
-            m_started = true;
-    
-            DeferredLayoutManager.registerStage(stage, _ -> {
-                // Callback for stage-level positioning
-                // For main window, we might not need to reposition
-                return new StageLayout.Builder()
-                    .x(stage.getX())
-                    .y(stage.getY())
-                    .width(stage.getWidth())
-                    .height(stage.getHeight())
-                    .build();
-            });
 
-            
-            // Create close button
-            BufferedButton closeBtn = new BufferedButton(FxResourceFactory.closeImg,20);
-            closeBtn.setOnAction(_ -> m_onClose.run());
-            
-            // Create top bar with tab management
-            topBar = new TabTopBar(m_smallIcon15, m_title, closeBtn, stage, this);
+        DeferredLayoutManager.registerStage(stage, _ -> {
+            // Callback for stage-level positioning
+            // For main window, we might not need to reposition
+            return new StageLayout.Builder()
+                .x(stage.getX())
+                .y(stage.getY())
+                .width(stage.getWidth())
+                .height(stage.getHeight())
+                .build();
+        });
 
-            // Create sidebar
-            sideBar = new SideBarPanel();
-            
-            // Create content area
-            contentArea = new StackPane();
-            contentArea.setStyle("-fx-background-color: #1e1e1e;");
-            
-            // Main layout
-            root = new BorderPane();
-            root.setTop(topBar);
-            root.setLeft(sideBar);
-            root.setCenter(contentArea);
-            
-            // Create scene
-            this.scene = new Scene(root, DEFAULT_WIDTH, DEFAULT_HEIGHT);
-            this.scene.setFill(null);
-            stage.setScene(scene);
-            this.scene.getStylesheets().add(FxResourceFactory.DEFAULT_CSS);
-            
-            // Register with DeferredLayoutManager
-            setupLayoutManagement();
+        
+        // Create close button
+        BufferedButton closeBtn = new BufferedButton(FxResourceFactory.closeImg,20);
+        closeBtn.setOnAction(_ -> m_onClose.run());
+        
+        // Create top bar with tab management
+        topBar = new TabTopBar(m_smallIcon15, m_title, closeBtn, stage, this);
+        
+        // Create sidebar
+        sideBar = new SideBarPanel(topBar.heightProperty());
+        
+        // Create content area
+        contentArea = new StackPane();
+        contentArea.setStyle("-fx-background-color: #1e1e1e;");
+        
+        // Main layout
+        root = new BorderPane();
+        root.setTop(topBar);
+        root.setLeft(sideBar);
+        root.setCenter(contentArea);
+        
+        // Create scene
+        this.scene = new Scene(root, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+        this.scene.setFill(null);
+        this.stage.setScene(scene);
+        this.scene.getStylesheets().add(FxResourceFactory.DEFAULT_CSS);
+        
+        // Register with DeferredLayoutManager
+        setupLayoutManagement();
 
-            m_currentTabIdProperty.addListener((_,_, newval)->{
-                if (newval == null){
-                    contentArea.getChildren().clear();
-                    return;
-                }
-
-                ContentTab tab = getTab(newval);
-
-                if (tab == null || tab.getParentWindow() != this) return;
-            
+        m_currentTabIdProperty.addListener((_,_, newval)->{
+            if (newval == null){
                 contentArea.getChildren().clear();
-                contentArea.getChildren().add(tab.getAppBox());
-                DeferredLayoutManager.markDirty(tab.getAppBox());
-            });
+                return;
+            }
 
-            getSideBar().initializeLayout(stage);
-        }
+            ContentTab tab = getTab(newval);
+
+            if (tab == null || tab.getParentWindow() != this) return;
+        
+            contentArea.getChildren().clear();
+            contentArea.getChildren().add(tab.getAppBox());
+            DeferredLayoutManager.markDirty(tab.getAppBox());
+        });
+
+        getSideBar().initializeLayout(stage);
     }
-
     public Scene getScene(){
         return scene;
     }

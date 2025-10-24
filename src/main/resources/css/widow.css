@@ -1378,7 +1378,7 @@
 #menuTabBtn {
     -fx-background-color: transparent;
     -fx-opacity: .8;
-    -fx-padding: 5px;
+    -fx-padding: 7 5 5 5;
     -fx-alignment: center;
 }
 

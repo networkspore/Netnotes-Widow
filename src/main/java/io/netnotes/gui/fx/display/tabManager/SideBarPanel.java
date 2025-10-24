@@ -61,9 +61,11 @@ public class SideBarPanel extends VBox {
     // Properties for dynamic sizing
     private final DoubleProperty availableWidth = new SimpleDoubleProperty();
     private final DoubleProperty availableHeight = new SimpleDoubleProperty();
-    
-    public SideBarPanel() {
+    private final DoubleExpression topBarHeight;
+    public SideBarPanel(DoubleExpression topBarHeight) {
         this.m_buttons = new ArrayList<>();
+
+        this.topBarHeight = topBarHeight;
         
         this.setId("appMenuBox");
         this.setPrefWidth(DEFAULT_SMALL_WIDTH);
@@ -79,6 +81,7 @@ public class SideBarPanel extends VBox {
         
         // Settings button
         m_settingsButton = new BufferedMenuButton(FxResourceFactory.SETTINGS_ICON, FxResourceFactory.BTN_IMG_SIZE);
+        m_expandButton.setId("menuTabBtn");
         m_settingsButton.setPrefHeight(DEFAULT_SMALL_WIDTH);
         m_settingsButton.setMinHeight(DEFAULT_SMALL_WIDTH);
         m_settingsButton.setMaxHeight(DEFAULT_SMALL_WIDTH);
@@ -125,9 +128,9 @@ public class SideBarPanel extends VBox {
             if (stage.getScene() == null) {
                 return new LayoutData.Builder().build();
             }
-            
+
             double sceneHeight = stage.getScene().getHeight();
-            double topBarHeight = 35; // TabTopBar height
+            double topBarHeight = this.topBarHeight.doubleValue();
             double sidebarHeight = sceneHeight - topBarHeight;
             
             // Update available dimensions

@@ -1,6 +1,8 @@
 package io.netnotes.gui.fx.app;
 
 import java.io.IOException;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import io.netnotes.engine.noteBytes.NoteBytesEphemeral;
 import io.netnotes.engine.noteFiles.SettingsData;
@@ -41,38 +43,47 @@ public class InitializeApp extends Application {
 
     private void login(Stage appStage){
         Scene verificationScene = StatusStageHelpers.getTransitionScene(FxResourceFactory.iconImage15, 
-            FxResourceFactory.logoImage256, "Password Verification - Netnotes", "Verifying...");
+            FxResourceFactory.logoImage256, "Netnotes", "Verifying...", appStage);
 
-         PasswordStageHelpers.enterPassword("Login",FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
+        PasswordStageHelpers.enterPassword("Login",FxResourceFactory.APP_NAME, FxResourceFactory.iconImage15, 
             FxResourceFactory.logoImage256, appStage, 
             _->{ shutdownNow(); }, 
             passField->{
                 Scene prevScene = appStage.getScene();
                 appStage.setScene(verificationScene);
                 appStage.centerOnScreen();
+                CompletableFuture<SettingsData> settingsFuture = null;
                 try(
                     NoteBytesEphemeral password = passField.getEphemeralPassword();
                 ){
-                    SettingsData.readSettings(password, TaskUtils.getVirtualExecutor()).whenComplete((settingsData, ex)->{
-                        if(ex == null){
-                            TaskUtils.noDelay(_->{
-                                startWidow(appStage, settingsData);
-                            });
-                        }else{
-                            Throwable cause = ex.getCause();
-                            if(!(cause instanceof InvalidPasswordException)){
-                                passField.clear();
-                                appStage.setScene(prevScene);
-                                appStage.centerOnScreen();
-
-                            }else{
-                                Alerts.showAndWaitErrorAlert("Critical Error", ex.getMessage() + ":\n\n\t" + cause.toString(), 
-                                    appStage, ButtonType.CLOSE);
-                                shutdownNow();
-                            }
-                        }
-                    });
+                    settingsFuture = SettingsData.readSettings(password, TaskUtils.getVirtualExecutor());
                 }
+
+                settingsFuture.whenComplete((settingsData, ex)->{
+                    if(ex == null){
+                        startWidow(appStage, settingsData);
+                    }else{
+                        Throwable cause = ex.getCause();
+                        TaskUtils.noDelay(_->{
+                            passField.escape();
+                            appStage.setScene(prevScene);
+                            appStage.centerOnScreen();
+                            appStage.requestFocus();
+                            if(!(cause instanceof InvalidPasswordException)){
+                                TaskUtils.noDelay(_->{
+                                    Optional<ButtonType> result = Alerts.showAndWaitErrorAlert("Critical Error", 
+                                        ex.getMessage() + ":\n\n\t" + cause.toString(), appStage, ButtonType.OK, 
+                                        ButtonType.CLOSE);
+
+                                    if(result.isEmpty() || result.get() == ButtonType.CLOSE){
+                                        shutdownNow();
+                                    }
+                                });
+                            }
+                        });
+                       
+                    }
+                });
             }
         );
     }
@@ -80,7 +91,8 @@ public class InitializeApp extends Application {
     private void intializeSettings(Stage appStage){
         final String createPassString = "Create password:";
         final String repeatPassString = "Repeat password:";
-
+        final Scene transitionScene = StatusStageHelpers.getTransitionScene(FxResourceFactory.iconImage15,
+            FxResourceFactory.logoImage256, "Netnotes", "Initializizing...", appStage);
         final PassField passField = new PassField();
         final Text passText = new Text(createPassString);
 
@@ -105,33 +117,41 @@ public class InitializeApp extends Application {
                     passField.clear();
                 }else{
                     Object passUserData = passField.getUserData();
+                    CompletableFuture<SettingsData> settingsFuture = null;
                     try(
                         NoteBytesEphemeral firstPassword = passUserData != null && passUserData instanceof NoteBytesEphemeral 
                             ? (NoteBytesEphemeral) passUserData : null;
                     ){
                         if(firstPassword != null && password.equals(firstPassword)){
-                            Scene scene = StatusStageHelpers.getTransitionScene(FxResourceFactory.iconImage15, FxResourceFactory.logoImage256,
-                                    "Initializizing - Netnotes", "Initializing...");
-                            appStage.setScene(scene);
-                        
-                            SettingsData.createSettings(password, TaskUtils.getVirtualExecutor())
-                                .whenComplete((settingsData,ex)->{
-                                    if(ex == null){
-                                        startWidow(appStage, settingsData);
-                                    }else{
-                                        Throwable failed = ex.getCause();
-                                        failed.printStackTrace();
-                                        Alerts.showAndWaitErrorAlert("Critical Error", ex.getMessage() + 
-                                            ":\n\t\t" + failed.toString(), appStage,ButtonType.CLOSE);
-                                        shutdownNow();
-                                    }
-                                });
+                            appStage.setScene(transitionScene);
+                            settingsFuture = SettingsData.createSettings(password, TaskUtils.getVirtualExecutor());
+                        }else{
+                            settingsFuture = null;
                         }
                     }finally{
-
                         passField.setUserData(null);
                         passField.escape();
                     }
+                    if(settingsFuture != null){
+                        settingsFuture.whenComplete((settingsData, ex)->{
+                            if(ex != null){
+                                Throwable failed = ex.getCause();
+                                failed.printStackTrace();
+                                TaskUtils.noDelay(_-> {
+                                    Optional<ButtonType> result = Alerts.showAndWaitErrorAlert("Critical Error", ex.getMessage() + 
+                                        ":\n\t\t" + failed.toString(), appStage,ButtonType.OK, ButtonType.CLOSE);
+                                    if(result.isEmpty() || result.get() == ButtonType.CLOSE){
+                                        shutdownNow();    
+                                    }else{
+
+                                    }
+                                });
+                        
+                            }else{
+                                startWidow(appStage, settingsData);
+                            }
+                        });
+                    }         
                 }
             }
         });
@@ -149,28 +169,51 @@ public class InitializeApp extends Application {
 
     }
 
-
-    public static void startWidow(Stage appStage, SettingsData settingsData){
-        m_widow = new NetnotesWidow(settingsData, appStage, new AppInterface() {
-            @Override
-            public void shutdownNow(){
-                shutdownNow();
-            }
-            @Override
-            public HostServices getHostServices(){
-                return getHostServices();
-            }
-            @Override
-            public Parameters getParameters(){
-                return getParameters();
-            }
-        });
-        TaskUtils.noDelay(_->m_widow.start());
+    public NetnotesWidow getWidow(){
+        return m_widow;
     }
 
-    private static void shutdownNow() {
-        Platform.exit();
-        System.exit(0);
+
+    public void startWidow(Stage appStage, SettingsData settingsData){
+    
+        m_widow = new NetnotesWidow(settingsData, appStage);
+        Platform.runLater(() -> {
+            m_widow.start(new AppInterface() {
+  
+
+                @Override
+                public HostServices getHostServices(){
+                    return InitializeApp.this.getHostServices();
+                }
+                @Override
+                public Parameters getParameters(){
+                    return InitializeApp.this.getParameters();
+                }
+                @Override
+                public void shutdownNow() {
+                    InitializeApp.this.shutdownNow();
+                }
+            });
+        });
+    }
+
+    public void shutdownNow() {
+        System.out.println("Shutting down...");
+        try {
+            // Try graceful shutdown
+            Platform.exit();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            // Force termination after small delay
+            new Thread(() -> {
+                try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+                System.err.println("Forcing System.exit(0)");
+                System.exit(0);
+            }, "ForceExitThread").start();
+        }
+
+        
     }
 
 }

@@ -2,18 +2,14 @@ package io.netnotes.gui.fx.display.tabManager;
 
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
-import javafx.stage.Stage;
 import javafx.scene.control.MenuButton;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.SeparatorMenuItem;
 import javafx.scene.control.Tooltip;
-import javafx.scene.input.MouseEvent;
 import javafx.util.Duration;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.beans.binding.DoubleExpression;
-import javafx.event.EventHandler;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -30,8 +26,6 @@ import io.netnotes.gui.fx.utils.TaskUtils;
  */
 public class TabBar extends HBox {
     private static final NoteBytes CLOSE_TABS_KEY = new NoteString("closeTabs");
-    private double xOffset = 0;
-    private double yOffset = 0;
 
     private final TabManagerStage manager;
     private final TabWindow parentWindow;
@@ -70,23 +64,6 @@ public class TabBar extends HBox {
         tabsBox.setPadding(new Insets(0, 5, 0, 5));
         tabsBox.setStyle("-fx-background-color: transparent;");
 
-        tabsBox.setOnMousePressed(new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent mouseEvent) {
-                xOffset = mouseEvent.getSceneX();
-                yOffset = mouseEvent.getSceneY();
-            }
-        });
-        Stage theStage = parentWindow.getStage();
-        tabsBox.setOnMouseDragged(new EventHandler<MouseEvent>() {
-            @Override
-            public void handle(MouseEvent mouseEvent) {
-                if (!theStage.isMaximized()) {
-                    theStage.setX(mouseEvent.getScreenX() - xOffset);
-                    theStage.setY(mouseEvent.getScreenY() - yOffset);
-                }
-            }
-        });
 
         // ScrollPane to make tabs scrollable
         tabsScroll = new ScrollPane(tabsBox);

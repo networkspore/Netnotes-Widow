@@ -43,7 +43,7 @@ public class ContentTab {
         this.parentWindow = initialWindow;
 
         // Create tab box for display in horizontal tabs
-        tabBox = new HBox(5);
+        tabBox = new TabBox(5);
         tabBox.setPadding(new Insets(2,3,2,2));
         tabBox.setId("tabBtn");
         tabBox.setFocusTraversable(true);
@@ -174,5 +174,11 @@ public class ContentTab {
     
     public void shutdown() {
         // Override in subclasses to cleanup
+    }
+
+    public static class TabBox extends HBox{
+        public TabBox(int spacing){
+            super(spacing);
+        }
     }
 }

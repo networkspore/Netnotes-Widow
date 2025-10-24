@@ -256,6 +256,42 @@ public class TopBar extends HBox {
 
     }
 
+    public TopBar(Image icon15, String title, Stage theStage){
+        super();
+        Label newTitleLbl = new Label(title);
+        newTitleLbl.setFont(FxResourceFactory.titleFont);
+        newTitleLbl.setTextFill(FxResourceFactory.txtColor);
+        newTitleLbl.setPadding(new Insets(0, 0, 0, 10));
+
+        ImageView barIconView = new ImageView(icon15);
+        barIconView.setFitHeight(20);
+        barIconView.setPreserveRatio(true);
+
+        getChildren().addAll(barIconView, newTitleLbl);
+        setAlignment(Pos.CENTER_LEFT);
+        setPadding(new Insets(10, 8, 10, 10));
+        setId("topBar");
+
+        Delta dragDelta = new Delta();
+
+        this.setOnMousePressed(new EventHandler<MouseEvent>() {
+            @Override
+            public void handle(MouseEvent mouseEvent) {
+                // record a delta distance for the drag and drop operation.
+                dragDelta.x = theStage.getX() - mouseEvent.getScreenX();
+                dragDelta.y = theStage.getY() - mouseEvent.getScreenY();
+            }
+        });
+        this.setOnMouseDragged(new EventHandler<MouseEvent>() {
+            @Override
+            public void handle(MouseEvent mouseEvent) {
+                theStage.setX(mouseEvent.getScreenX() + dragDelta.x);
+                theStage.setY(mouseEvent.getScreenY() + dragDelta.y);
+            }
+        });
+
+    }
+
     public TopBar(Image iconImage, String titleString, Button closeBtn, Stage theStage) {
         super();
         ImageView barIconView = new ImageView(iconImage);

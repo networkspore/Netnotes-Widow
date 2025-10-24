@@ -32,9 +32,9 @@ import javafx.stage.Stage;
 
 public class NetnotesWidow {
 
-    public static final String TITLE = "Netnotes: Widow";
+    public static final String NAME = "Netnotes: Widow";
 
-    private final AppInterface m_appInterface;
+    private AppInterface m_appInterface;
     private final Stage m_appStage;
     private final SettingsData m_settingsData;
     private final AppData m_appData;
@@ -47,20 +47,20 @@ public class NetnotesWidow {
 
     //receives an appstage that was formerly a password stage
     //settings data contains the information to startup the appData encrypted registry, created from the password stage
-    public NetnotesWidow(SettingsData settingsData, Stage appStage, AppInterface appInterface){
+    public NetnotesWidow(SettingsData settingsData, Stage appStage){
         m_appStage = appStage;
-        m_appInterface = appInterface;
+ 
         m_settingsData = settingsData;
-        System.out.println("Starting App,,,");
         m_appData = new AppData(settingsData);
-        m_tabManagerStage = new TabManagerStage(m_appStage, TITLE, FxResourceFactory.iconImage15, FxResourceFactory.logoImage256, 
-            ()->stop());
+       
     }
 
-    public void start(){
+    public void start(AppInterface appInterface){
         if(!m_isStarted){
             m_isStarted = true;
-            m_tabManagerStage.start();
+            m_appInterface = appInterface;
+            m_tabManagerStage = new TabManagerStage(m_appStage, NAME, FxResourceFactory.iconImage15, 
+                FxResourceFactory.logoImage256, ()->stop());
         }
     }
 
@@ -84,26 +84,20 @@ public class NetnotesWidow {
                 futures.add(app.shutdown(progressWriter));
             }
             return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-            .thenAccept(_->m_appData.shutdown(progressWriter)).thenRun(()->{
-                m_widowApps.clear();
-                StreamUtils.safeClose(progressWriter);
-                TaskUtils.noDelay(_->{
-                    m_appStage.close();
-                    // Final shutdown.
+                .thenAccept(_ -> m_appData.shutdown(progressWriter))
+                .handle((_, ex) -> {
+                    StreamUtils.safeClose(progressWriter);
+
+                    if (ex != null) {
+                        m_isShuttingDown = false;
+                        System.err.println(ex.getMessage());
+                        if (ex.getCause() != null)
+                            System.err.println(ex.getCause());
+                    }
+
                     shutdownNow();
+                    return null;
                 });
-            }).exceptionally(_->{
-                StreamUtils.safeClose(progressWriter);
-                m_isShuttingDown = false;
-                if(force){
-                    TaskUtils.noDelay(_->{
-                        m_appStage.close();
-                        // Final shutdown.
-                        shutdownNow();
-                    });
-                }
-                return null;
-            });
         }else{
             return CompletableFuture.failedFuture(new IllegalStateException("Stop in progress"));
         }
