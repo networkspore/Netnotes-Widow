@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.tabManager;
+package io.netnotes.gui.fx.display.contentManager;
 
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -13,7 +13,6 @@ import javafx.animation.Timeline;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
 import javafx.event.EventHandler;
-import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Node;
 import javafx.scene.control.ContentDisplay;

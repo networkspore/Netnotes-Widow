@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.tabManager;
+package io.netnotes.gui.fx.display.contentManager;
 
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -27,7 +27,7 @@ import io.netnotes.gui.fx.utils.TaskUtils;
 public class TabBar extends HBox {
     private static final NoteBytes CLOSE_TABS_KEY = new NoteString("closeTabs");
 
-    private final TabManagerStage manager;
+    private final AppManagerStage manager;
     private final TabWindow parentWindow;
     private final HBox tabsBox;
     private final ScrollPane tabsScroll;
@@ -44,7 +44,7 @@ public class TabBar extends HBox {
      * @param leftWidths Array of widths to subtract from left side (e.g., icon width)
      * @param rightWidths Array of widths to subtract from right side (e.g., buttons)
      */
-    public TabBar(TabManagerStage manager, 
+    public TabBar(AppManagerStage manager, 
                   TabWindow parentWindow,
                   DoubleExpression baseWidth, 
                   DoubleExpression baseHeight,

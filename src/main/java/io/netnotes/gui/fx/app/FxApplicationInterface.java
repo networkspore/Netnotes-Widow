@@ -3,7 +3,7 @@ package io.netnotes.gui.fx.app;
 import javafx.application.HostServices;
 import javafx.application.Application.Parameters;
 
-public interface AppInterface{
+public interface FxApplicationInterface{
     void shutdownNow();
     HostServices getHostServices();
     Parameters getParameters();

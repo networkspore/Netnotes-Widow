@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.tabManager;
+package io.netnotes.gui.fx.display.contentManager;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -6,7 +6,7 @@ import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesReadOnly;
 import javafx.scene.layout.BorderPane;
 
-public class ContentBox extends BorderPane {
+public class AppBox extends BorderPane {
     
     private final NoteBytesReadOnly m_appId;
     private final String m_name;
@@ -15,7 +15,7 @@ public class ContentBox extends BorderPane {
     protected double lastWidth = 0;
     protected double lastHeight = 0;
 
-    public ContentBox(NoteBytes appId, String name) {
+    public AppBox(NoteBytes appId, String name) {
         super();
         m_appId = new NoteBytesReadOnly(appId);
         m_name = name;

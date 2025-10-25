@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.tabManager;
+package io.netnotes.gui.fx.display.contentManager;
 
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
@@ -17,8 +17,8 @@ import io.netnotes.engine.noteBytes.NoteBytes;
 import io.netnotes.engine.noteBytes.NoteBytesArray;
 import io.netnotes.gui.fx.components.buttons.BufferedButton;
 import io.netnotes.gui.fx.display.FxResourceFactory;
+import io.netnotes.gui.fx.display.contentManager.ContentTab.TabBox;
 import io.netnotes.gui.fx.display.control.layout.ScrollPaneHelper;
-import io.netnotes.gui.fx.display.tabManager.ContentTab.TabBox;
 
 public class TabTopBar extends HBox {
 
@@ -32,7 +32,7 @@ public class TabTopBar extends HBox {
         void onTabSelected(NoteBytes tabId);
     }
     
-    public TabTopBar(Image iconImage, String titleString, Button closeBtn, Stage theStage, TabManagerStage manager) {
+    public TabTopBar(Image iconImage, String titleString, Button closeBtn, Stage theStage, AppManagerStage manager) {
         super();
    
         stage = theStage;

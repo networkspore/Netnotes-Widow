@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.tabManager;
+package io.netnotes.gui.fx.display.contentManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,7 +26,7 @@ import javafx.stage.StageStyle;
 
 public class DetachedTabWindow implements TabWindow {
     private final Stage stage;
-    private final TabManagerStage manager;
+    private final AppManagerStage manager;
     private final HBox topBar;
     private final TabBar tabBar;
     private final StackPane contentArea;
@@ -34,7 +34,7 @@ public class DetachedTabWindow implements TabWindow {
     
     private final SimpleObjectProperty< NoteBytesArray> m_currentTabIdProperty = new SimpleObjectProperty<>(null);
     
-   public DetachedTabWindow(TabManagerStage manager, String initialTitle, 
+   public DetachedTabWindow(AppManagerStage manager, String initialTitle, 
                             Image icon, double x, double y) {
       this.manager = manager;
         this.stage = new Stage();
@@ -147,7 +147,7 @@ public class DetachedTabWindow implements TabWindow {
         }
 
         NoteBytesArray tabId = tab.getId();
-        ContentBox appBox = tab.getAppBox();
+        AppBox appBox = tab.getAppBox();
     
         tabBar.addTab(tab);
    
@@ -189,7 +189,7 @@ public class DetachedTabWindow implements TabWindow {
             }
         }
 
-        ContentBox appBox = tab.getAppBox();
+        AppBox appBox = tab.getAppBox();
         DeferredLayoutManager.unregister(appBox);
 
         if(tab != null && m_currentTabIdProperty == tab.currentIdProperty()){

@@ -18,29 +18,26 @@ import io.netnotes.engine.noteBytes.NoteStringArrayReadOnly;
 import io.netnotes.engine.noteBytes.processing.AsyncNoteBytesWriter;
 import io.netnotes.engine.noteFiles.NoteFile;
 import io.netnotes.engine.noteFiles.SettingsData;
-import io.netnotes.engine.noteFiles.notePath.NoteFileService;
 import io.netnotes.engine.noteFiles.notePath.NotePath;
 import io.netnotes.engine.utils.streams.StreamUtils;
 import io.netnotes.gui.fx.display.FxResourceFactory;
-import io.netnotes.gui.fx.display.tabManager.ContentBox;
-import io.netnotes.gui.fx.display.tabManager.SideBarButton;
-import io.netnotes.gui.fx.display.tabManager.TabManagerStage;
-import io.netnotes.gui.fx.utils.TaskUtils;
+import io.netnotes.gui.fx.display.contentManager.AppBox;
+import io.netnotes.gui.fx.display.contentManager.AppManagerInterface;
+import io.netnotes.gui.fx.display.contentManager.AppManagerStage;
+import io.netnotes.gui.fx.display.contentManager.IApp;
 import javafx.application.HostServices;
 import javafx.application.Application.Parameters;
 import javafx.stage.Stage;
 
-public class NetnotesWidow {
+public class NetnotesWidow extends AppData {
 
     public static final String NAME = "Netnotes";
 
-    private AppInterface m_appInterface;
+    private FxApplicationInterface m_appInterface;
     private final Stage m_appStage;
-    private final SettingsData m_settingsData;
-    private final AppData m_appData;
-    private TabManagerStage m_tabManagerStage;
+    private AppManagerStage m_appManagerStage;
 
-    private Map<NoteBytesReadOnly, IWidowApp> m_widowApps = new ConcurrentHashMap<>();
+    private Map<NoteBytesReadOnly, IApp> m_widowApps = new ConcurrentHashMap<>();
 
     private boolean m_isStarted = false;
     private boolean m_isShuttingDown = false;
@@ -48,18 +45,17 @@ public class NetnotesWidow {
     //receives an appstage that was formerly a password stage
     //settings data contains the information to startup the appData encrypted registry, created from the password stage
     public NetnotesWidow(SettingsData settingsData, Stage appStage){
+        super(settingsData);
         m_appStage = appStage;
  
-        m_settingsData = settingsData;
-        m_appData = new AppData(settingsData);
        
     }
 
-    public void start(AppInterface appInterface){
+    public void start(FxApplicationInterface fxInterface){
         if(!m_isStarted){
             m_isStarted = true;
-            m_appInterface = appInterface;
-            m_tabManagerStage = new TabManagerStage(m_appStage, NAME, FxResourceFactory.iconImage15, 
+            m_appInterface = fxInterface;
+            m_appManagerStage = new AppManagerStage(m_appStage, NAME, FxResourceFactory.iconImage15, 
                 FxResourceFactory.logoImage256, ()->stop());
         }
     }
@@ -80,11 +76,11 @@ public class NetnotesWidow {
           
             ArrayList<CompletableFuture<Void>> futures = new ArrayList<>();
             // Shutdown all apps
-            for (IWidowApp app : m_widowApps.values()) {
+            for (IApp app : m_widowApps.values()) {
                 futures.add(app.shutdown(progressWriter));
             }
             return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-                .thenAccept(_ -> m_appData.shutdown(progressWriter))
+                .thenAccept(_ -> super.shutdown(progressWriter))
                 .handle((_, ex) -> {
                     StreamUtils.safeClose(progressWriter);
 
@@ -104,30 +100,30 @@ public class NetnotesWidow {
     }
 
       /**
-     * Register a new IWidowApp with the system.
+     * Register a new IApp with the system.
      * The app will be initialized and added to the sidebar.
      * 
-     * @param iWidowApp The app to register
+     * @param app The app to register
      * @return true if successfully added, false if app already exists
      */
-    protected boolean addApp(IWidowApp iWidowApp){
-        NoteBytes appId = iWidowApp.getAppId();
+    protected boolean addApp(IApp app){
+        NoteBytes appId = app.getAppId();
 
 
         if(appId != null && !m_widowApps.containsKey(appId)){
-            NoteBytesReadOnly staticAppId = iWidowApp.getAppId().copy();
+            NoteBytesReadOnly staticAppId = app.getAppId().copy();
             
             // Initialize the app with its interfaces
-            iWidowApp.init(
+            app.init(
                 getAppDataInterface(staticAppId),
                 getTabManagerInterface(staticAppId)
             );
    
             // Add sidebar button
-            m_tabManagerStage.getSideBar().addButton(iWidowApp.getSideBarButton());
+            m_appManagerStage.getSideBar().addButton(app.getSideBarButton());
             
             // Store app reference
-            m_widowApps.put(staticAppId, iWidowApp);
+            m_widowApps.put(staticAppId, app);
             
             return true;
         }
@@ -142,14 +138,14 @@ public class NetnotesWidow {
      * @return true if removed, false if not found
      */
     protected CompletableFuture<Void> removeApp(NoteBytesReadOnly appId, boolean deleteFiles,  AsyncNoteBytesWriter progressWriter) {
-        IWidowApp app = m_widowApps.remove(appId);
+        IApp app = m_widowApps.remove(appId);
         
         if (app != null) {
             // Remove all tabs for this app
-            m_tabManagerStage.removeTabsByParentId(appId);
+            m_appManagerStage.removeTabsByParentId(appId);
             
             // Remove sidebar button
-            m_tabManagerStage.getSideBar().removeButton(app.getSideBarButton());
+            m_appManagerStage.getSideBar().removeButton(app.getSideBarButton());
 
             // Shutdown the app
             NoteStringArrayReadOnly path = new NoteStringArrayReadOnly(appId.copy());
@@ -169,29 +165,29 @@ public class NetnotesWidow {
         return CompletableFuture.completedFuture(null);
     }
 
-    private TabManagerInterface getTabManagerInterface(NoteBytesReadOnly appId){
-        return new TabManagerInterface(){
+    private AppManagerInterface getTabManagerInterface(NoteBytesReadOnly appId){
+        return new AppManagerInterface(){
 
             @Override
-            public void addTab(NoteBytes tabId,String tabName, ContentBox tabBox) {
-                m_tabManagerStage.addTab(tabId, appId, tabName, tabBox);
+            public void addTab(NoteBytes tabId,String tabName, AppBox tabBox) {
+                m_appManagerStage.addTab(tabId, appId, tabName, tabBox);
             }
 
             @Override
             public void removeTab(NoteBytes tabId) {
-                m_tabManagerStage.removeTab(tabId, appId);
+                m_appManagerStage.removeTab(tabId, appId);
             }
 
 
             @Override
             public boolean containsTab(NoteBytes tabId) {
 
-                return m_tabManagerStage.containsTab(tabId, appId);
+                return m_appManagerStage.containsTab(tabId, appId);
             }
 
             @Override
             public void setCurrentTab(NoteBytes tabId) {
-                m_tabManagerStage.setCurrentTab(tabId, appId);
+                m_appManagerStage.setCurrentTab(tabId, appId);
             }
 
             @Override
@@ -200,13 +196,13 @@ public class NetnotesWidow {
             }
 
             @Override
-            public ContentBox[] getAppBoxes() {
-                return m_tabManagerStage.getAppBoxesByParentId(appId);
+            public AppBox[] getAppBoxes() {
+                return m_appManagerStage.getAppBoxesByParentId(appId);
             }
 
             @Override
-            public ContentBox getAppBox(NoteBytes tabId) {
-                return m_tabManagerStage.getTab(tabId, appId).getAppBox();
+            public AppBox getAppBox(NoteBytes tabId) {
+                return m_appManagerStage.getTab(tabId, appId).getAppBox();
             }
             
         };
@@ -220,21 +216,43 @@ public class NetnotesWidow {
             }
             @Override
             public HostServicesInterface getHostServices(){
-                return getHostServices();
+                return new HostServicesInterface() {
+
+                    @Override
+                    public String getCodeBase() {
+                        return NetnotesWidow.this.m_appInterface.getHostServices().getCodeBase();
+                    }
+
+                    @Override
+                    public String getDocumentBase() {
+                        return NetnotesWidow.this.m_appInterface.getHostServices().getDocumentBase();
+                    }
+
+                    @Override
+                    public String resolveURI(String base, String rel) {
+                        return NetnotesWidow.this.m_appInterface.getHostServices().resolveURI(base, rel);
+                    }
+
+                    @Override
+                    public void showDocument(String uri) {
+                        NetnotesWidow.this.m_appInterface.getHostServices().showDocument(uri);
+                    }
+                    
+                };
             }
             @Override
             public ExecutorService getExecService(){
-                return m_appData.getExecService();
+                return NetnotesWidow.this.getExecService();
             }
             @Override
             public CompletableFuture<NoteFile> getNoteFile(NoteStringArrayReadOnly path){
-                return getNoteFileService().getNoteFile(sandboxPath(path));
+                return NetnotesWidow.this.getNoteFileService().getNoteFile(sandboxPath(path));
             }
             @Override
             public CompletableFuture<NotePath> deleteNoteFilePath(NoteStringArrayReadOnly path, boolean recursive, 
                 AsyncNoteBytesWriter progressWriter)
             {
-                return getNoteFileService().deleteNoteFilePath(sandboxPath(path), recursive, progressWriter);
+                return NetnotesWidow.this.getNoteFileService().deleteNoteFilePath(sandboxPath(path), recursive, progressWriter);
             }
 
             /**
@@ -266,12 +284,6 @@ public class NetnotesWidow {
     }
 
 
-    
-
-    private NoteFileService getNoteFileService(){
-        return m_appData.getNoteFileService();
-    }
-
     private HostServices getAppHostServices(){
         return m_appInterface.getHostServices();
     }
@@ -285,86 +297,10 @@ public class NetnotesWidow {
     }
 
 
-    /**
-     * Interface that apps must implement to be added to the Widow system.
-     */
-    public interface IWidowApp {
-        /**
-         * Unique identifier for this app.
-         */
-        NoteBytesReadOnly getAppId();
-        
-        /**
-         * Human-readable name for this app.
-         */
-        String getName();
-        
-      
-        /**
-         * Initialize the app with required interfaces.
-         * Called once when the app is first registered.
-         * 
-         * @param appDataInterface Interface for data/file operations
-         * @param tabManagerInterface Interface for tab management
-         */
-        void init(AppDataInterface appDataInterface, TabManagerInterface tabManagerInterface);
-        
-        /**
-         * Get the sidebar button for this app.
-         * This button is shown in the sidebar for quick access.
-         */
-        SideBarButton getSideBarButton();
-        
-        /**
-         * Shutdown the app and clean up resources.
-         * Called when the app is removed or the system shuts down.
-         */
-        CompletableFuture<Void> shutdown(AsyncNoteBytesWriter progressWriter);
-    }
-
+   
      /**
      * Interface provided to apps for managing tabs.
      * All operations are sandboxed to only affect the app's own tabs.
      */
-    public interface TabManagerInterface {
-        /**
-         * Add a new tab for this app.
-         * 
-         * @param tabId Unique identifier for the tab
-         * @param tabName Display name for the tab
-         * @param tabBox The AppBox to display in the tab
-         */
-        void addTab(NoteBytes tabId, String tabName, ContentBox tabBox);
-        
-        /**
-         * Remove a tab owned by this app.
-         * 
-         * @param tabId The tab to remove
-         */
-        void removeTab(NoteBytes tabId);
-        
-        /**
-         * Check if a tab exists and is owned by this app.
-         * 
-         * @param tabId The tab to check
-         * @return true if tab exists and is owned by this app
-         */
-        boolean containsTab(NoteBytes tabId);
-        
-        /**
-         * Set the currently active tab (if owned by this app).
-         * 
-         * @param tabId The tab to make active
-         */
-        void setCurrentTab(NoteBytes tabId);
-        
-        ContentBox[] getAppBoxes();
-
-        ContentBox getAppBox(NoteBytes tabId);
-        /**
-         * Get the main application stage.
-         * Needed for registering with DeferredLayoutManager.
-         */
-        Stage getStage();
-    }
+    
 }

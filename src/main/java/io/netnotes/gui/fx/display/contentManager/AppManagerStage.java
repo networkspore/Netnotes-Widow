@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.tabManager;
+package io.netnotes.gui.fx.display.contentManager;
 
 import javafx.beans.property.SimpleObjectProperty;
 import javafx.geometry.Insets;
@@ -27,7 +27,7 @@ import io.netnotes.gui.fx.display.control.layout.DeferredLayoutManager;
 import io.netnotes.gui.fx.display.control.layout.LayoutData;
 import io.netnotes.gui.fx.display.control.layout.StageLayout;
 
-public class TabManagerStage implements TabWindow {
+public class AppManagerStage implements TabWindow {
     private final static double DEFAULT_WIDTH = 1000;
     private final static double DEFAULT_HEIGHT = 650;
 
@@ -51,8 +51,11 @@ public class TabManagerStage implements TabWindow {
     private final Runnable m_onClose;
     private final ConcurrentHashMap<NoteBytesArray, ContentTab> allTabs = new ConcurrentHashMap<>();
     
+    public AppManagerStage(Stage stage, String title, Image smallIcon15, Image windowIcon100, Runnable onClose) {
+        this(stage, title, smallIcon15, windowIcon100, false, onClose);
+    }
     
-    public TabManagerStage(Stage stage, String title, Image smallIcon15, Image windowIcon100, Runnable onClose) {
+    public AppManagerStage(Stage stage, String title, Image smallIcon15, Image windowIcon100, boolean isExpanded, Runnable onClose) {
         this.stage = stage;
         this.stage.setTitle(title);
         this.m_title = title;
@@ -81,7 +84,7 @@ public class TabManagerStage implements TabWindow {
         topBar = new TabTopBar(m_smallIcon15, m_title, closeBtn, stage, this);
         
         // Create sidebar
-        sideBar = new SideBarPanel(title, topBar.heightProperty());
+        sideBar = new SideBarPanel(title, isExpanded, topBar.heightProperty());
         
         // Create content area
         contentArea = new StackPane();
@@ -119,6 +122,11 @@ public class TabManagerStage implements TabWindow {
 
         getSideBar().initializeLayout(stage);
     }
+    
+    public void setIsExpanded(boolean isExpanded){
+        this.sideBar.setIsExpanded(isExpanded);
+    }
+
     public Scene getScene(){
         return scene;
     }
@@ -181,7 +189,7 @@ public class TabManagerStage implements TabWindow {
             // Trigger layout for all active tabs
             if (currentTabId != null) {
                 ContentTab tab = this.allTabs.get(currentTabId);
-                if (tab != null && tab.getAppBox() instanceof ContentBox) {
+                if (tab != null && tab.getAppBox() instanceof AppBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
             }
@@ -194,7 +202,7 @@ public class TabManagerStage implements TabWindow {
             // Trigger layout for all active tabs
             if (currentTabId != null) {
                 ContentTab tab = this.allTabs.get(currentTabId);
-                if (tab != null && tab.getAppBox() instanceof ContentBox) {
+                if (tab != null && tab.getAppBox() instanceof AppBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
             }
@@ -208,7 +216,7 @@ public class TabManagerStage implements TabWindow {
             // Trigger layout for all active tabs
             if (currentTabId != null) {
                 ContentTab tab = this.allTabs.get(currentTabId);
-                if (tab != null && tab.getAppBox() instanceof ContentBox) {
+                if (tab != null && tab.getAppBox() instanceof AppBox) {
                     DeferredLayoutManager.markDirty(tab.getAppBox());
                 }
             }
@@ -218,7 +226,7 @@ public class TabManagerStage implements TabWindow {
      /**
      * Create a new tab and add to tracking
      */
-    public void addTab(NoteBytes tabId, NoteBytes parentId, String title, ContentBox appBox) {
+    public void addTab(NoteBytes tabId, NoteBytes parentId, String title, AppBox appBox) {
         NoteBytesArray compositeId = new NoteBytesArray(parentId, tabId);
 
         if (this.allTabs.containsKey(compositeId)) {
@@ -301,7 +309,7 @@ public class TabManagerStage implements TabWindow {
         //
         NoteBytesArray tabId = tab.getId();
 
-        ContentBox appBox = tab.getAppBox();
+        AppBox appBox = tab.getAppBox();
 
         DeferredLayoutManager.register(getStage(), appBox, _ -> {
             if (m_currentTabIdProperty.get() != null && m_currentTabIdProperty.get().equals(tabId)) {
@@ -337,7 +345,7 @@ public class TabManagerStage implements TabWindow {
         }
         
         // Shutdown the app box
-        ContentBox appBox = tab.getAppBox();
+        AppBox appBox = tab.getAppBox();
         if (appBox != null) {
             appBox.shutdown();
         }
@@ -374,7 +382,7 @@ public class TabManagerStage implements TabWindow {
                 }
             }
         }
-        ContentBox appBox = tab.getAppBox();
+        AppBox appBox = tab.getAppBox();
         DeferredLayoutManager.unregister(appBox);
         // Remove from top bar
         topBar.removeTab(tabId);
@@ -410,15 +418,15 @@ public class TabManagerStage implements TabWindow {
     }
 
 
-     public ContentBox[] getAppBoxesByParentId(NoteBytes parentId) {
-        ArrayList<ContentBox> appBoxes = new ArrayList<>();
+     public AppBox[] getAppBoxesByParentId(NoteBytes parentId) {
+        ArrayList<AppBox> appBoxes = new ArrayList<>();
         for (Map.Entry<NoteBytesArray, ContentTab> entry : this.allTabs.entrySet()) {
             ContentTab tab = entry.getValue();
             if (parentId != null && parentId.equals(tab.getParentId())) {
-                appBoxes.add((ContentBox)entry.getValue().getAppBox());
+                appBoxes.add((AppBox)entry.getValue().getAppBox());
             } 
         }
-        return appBoxes.toArray(new ContentBox[0]);
+        return appBoxes.toArray(new AppBox[0]);
     }
     
     public void closeAllTabs() {

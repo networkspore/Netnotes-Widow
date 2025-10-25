@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.tabManager;
+package io.netnotes.gui.fx.display.contentManager;
 
 import javafx.scene.layout.VBox;
 import javafx.scene.layout.HBox;
@@ -55,7 +55,7 @@ public class SideBarPanel extends VBox {
     private final HBox m_listBoxPadding;
     private Timeline m_transitionTimeline = null;
     private long m_lastToggleTime = System.currentTimeMillis();
-    private PauseTransition debounce = new PauseTransition(Duration.millis(TaskUtils.DEFAULT_FX_DELAY));
+    private PauseTransition m_debounce = new PauseTransition(Duration.millis(TaskUtils.DEFAULT_FX_DELAY));
     
     private ScrollPaneHelper m_scrollHelper;
     private final AtomicReference<CompletableFuture<Void>> m_currentTask =
@@ -64,7 +64,7 @@ public class SideBarPanel extends VBox {
     private final AtomicReference<AtomicBoolean> cancelFlag = 
         new AtomicReference<>(new AtomicBoolean(false));
 
-    private boolean isExpanded = false;
+    private boolean m_isExpanded = false;
     private Stage stage;
     
     // Properties for dynamic sizing
@@ -77,10 +77,11 @@ public class SideBarPanel extends VBox {
     private ChangeListener<Number> containerHeightListener;
     private ChangeListener<javafx.geometry.Bounds> viewportBoundsListener;
     
-    public SideBarPanel(String title, DoubleExpression topBarHeight) {
+    public SideBarPanel(String title, boolean isExpanded, DoubleExpression topBarHeight) {
         this.m_buttons = new ArrayList<>();
         this.topBarHeight = topBarHeight;
         this.m_title = title;
+        this.m_isExpanded = isExpanded;
         
         this.setId("appMenuBox");
         this.setPrefWidth(DEFAULT_SMALL_WIDTH);
@@ -95,9 +96,7 @@ public class SideBarPanel extends VBox {
         m_expandButton.setMaxHeight(DEFAULT_SMALL_WIDTH);
         m_expandButton.setAlignment(Pos.CENTER_LEFT);
         m_expandButton.setFont(FxResourceFactory.HeadingFont);
-        m_expandButton.setText(isExpanded ? m_title : "");
-        m_expandButton.setPadding(isExpanded ? m_expandedBtnInsets : m_btnInsets);
-        m_expandButton.setGraphicTextGap(isExpanded ? 15 : 0);
+
         
         // Settings button
         m_settingsButton = new BufferedButton(FxResourceFactory.SETTINGS_ICON, FxResourceFactory.BTN_IMG_SIZE);
@@ -140,6 +139,8 @@ public class SideBarPanel extends VBox {
         
         // Setup width property
         availableWidth.set(DEFAULT_SMALL_WIDTH);
+
+        updateExpanded();
     }
     
     /**
@@ -246,7 +247,7 @@ public class SideBarPanel extends VBox {
         containerHeightListener = (_, _, _) -> {
             if (stage != null) {
                 DeferredLayoutManager.markDirty(m_buttonContainer);
-                debounceButtonSizes();
+                playFromStart_BtnDebounce();
             }
         };
         m_buttonContainer.heightProperty().addListener(containerHeightListener);
@@ -255,7 +256,7 @@ public class SideBarPanel extends VBox {
         viewportBoundsListener = (_, _, _) -> {
             if (stage != null) {
                 DeferredLayoutManager.markDirty(m_buttonContainer);
-                debounceButtonSizes();
+                playFromStart_BtnDebounce();
             }
         };
         m_listScroll.viewportBoundsProperty().addListener(viewportBoundsListener);
@@ -291,17 +292,17 @@ public class SideBarPanel extends VBox {
         }
     }
 
-    private void debounceButtonSizes() {
-        debounce.setDuration(Duration.millis(FrameRateMonitor.getInstance().getRecommendedDebounceDelay()));
-        debounce.setOnFinished(_ -> updateButtonSizes());
-        debounce.playFromStart();
+    private void playFromStart_BtnDebounce() {
+        m_debounce.setDuration(Duration.millis(FrameRateMonitor.getInstance().getRecommendedDebounceDelay()));
+        m_debounce.setOnFinished(_ -> updateButtonSizes());
+        m_debounce.playFromStart();
     }
     
     public void addButton(SideBarButton button) {
         button.setMaxWidth(Double.MAX_VALUE);
         m_buttons.add(button);
         m_buttonContainer.getChildren().add(button);
-        button.updateIsExpanded(isExpanded, cancelFlag.get(), m_transitionTimeline);
+        button.updateIsExpanded(m_isExpanded, cancelFlag.get(), m_transitionTimeline);
         
         // Mark container dirty to recalculate scrollbar needs
         if (stage != null) {
@@ -336,21 +337,28 @@ public class SideBarPanel extends VBox {
     public BufferedButton getExpandButton() {
         return m_expandButton;
     }
+    public void toggleExpanded(){
+        m_isExpanded = !m_isExpanded;
+        updateExpanded();
+    }
 
+    public void setIsExpanded(boolean isExpanded){
+        this.m_isExpanded = isExpanded;
+        updateExpanded();
+    }
 
-    public void toggleExpanded() {
+    public void updateExpanded() {
         double startWidth = getLayoutBounds().getWidth();
-        isExpanded = !isExpanded;
+    
+        m_expandButton.setText(m_isExpanded ? m_title : "");
+        m_expandButton.setPadding(m_isExpanded ? m_expandedBtnInsets : m_btnInsets);
+        m_expandButton.setGraphicTextGap(m_isExpanded ? 15 : 0);
 
-        m_expandButton.setText(isExpanded ? m_title : "");
-        m_expandButton.setPadding(isExpanded ? m_expandedBtnInsets : m_btnInsets);
-        m_expandButton.setGraphicTextGap(isExpanded ? 15 : 0);
-
-        m_settingsButton.setText(isExpanded ? "Settings" : "");
-        m_settingsButton.setPadding(isExpanded ? m_expandedBtnInsets : m_btnInsets);
-        m_settingsButton.setGraphicTextGap(isExpanded ? m_btnTextGap : 0);
+        m_settingsButton.setText(m_isExpanded ? "Settings" : "");
+        m_settingsButton.setPadding(m_isExpanded ? m_expandedBtnInsets : m_btnInsets);
+        m_settingsButton.setGraphicTextGap(m_isExpanded ? m_btnTextGap : 0);
    
-        double endWidth = isExpanded ? DEFAULT_LARGE_WIDTH : DEFAULT_SMALL_WIDTH;
+        double endWidth = m_isExpanded ? DEFAULT_LARGE_WIDTH : DEFAULT_SMALL_WIDTH;
 
         // Cancel any running animation
         if (m_transitionTimeline != null) {
@@ -426,9 +434,9 @@ public class SideBarPanel extends VBox {
             chain = chain.thenComposeAsync(_ -> {
                 if (myCancel.get()) return CompletableFuture.completedFuture(null);
     
-                button.getButton().setPadding(isExpanded ? m_expandedBtnInsets : m_btnInsets);
-                button.getButton().setGraphicTextGap(isExpanded ? m_btnTextGap : 0);
-                return button.updateIsExpanded(isExpanded, myCancel, m_transitionTimeline);
+                button.getButton().setPadding(m_isExpanded ? m_expandedBtnInsets : m_btnInsets);
+                button.getButton().setGraphicTextGap(m_isExpanded ? m_btnTextGap : 0);
+                return button.updateIsExpanded(m_isExpanded, myCancel, m_transitionTimeline);
             }, TaskUtils.getVirtualExecutor());
         }
 
@@ -440,8 +448,8 @@ public class SideBarPanel extends VBox {
         }
     }
 
-    public boolean isExpanded() {
-        return isExpanded;
+    public boolean isM_isExpanded() {
+        return m_isExpanded;
     }
     
     public List<SideBarButton> getButtons() {
@@ -462,7 +470,7 @@ public class SideBarPanel extends VBox {
         for (SideBarButton button : m_buttons) {
             if (button.getHeight() <= 0) continue;
             button.setPrefWidth(buttonWidth);
-            if (!isExpanded) {
+            if (!m_isExpanded) {
                 button.setPrefHeight(DEFAULT_SMALL_WIDTH);
             }
         }
@@ -496,8 +504,8 @@ public class SideBarPanel extends VBox {
             m_transitionTimeline.stop();
         }
         
-        if (debounce != null) {
-            debounce.stop();
+        if (m_debounce != null) {
+            m_debounce.stop();
         }
         
         // Cancel any pending async tasks

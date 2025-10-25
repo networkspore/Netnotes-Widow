@@ -178,7 +178,7 @@ public class InitializeApp extends Application {
     
         m_widow = new NetnotesWidow(settingsData, appStage);
         Platform.runLater(() -> {
-            m_widow.start(new AppInterface() {
+            m_widow.start(new FxApplicationInterface() {
   
 
                 @Override

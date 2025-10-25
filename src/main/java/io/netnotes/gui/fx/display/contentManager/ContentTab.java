@@ -1,4 +1,4 @@
-package io.netnotes.gui.fx.display.tabManager;
+package io.netnotes.gui.fx.display.contentManager;
 
 import javafx.scene.layout.HBox;
 import javafx.stage.Stage;
@@ -20,7 +20,7 @@ public class ContentTab {
     private final NoteBytesArray id;
     private final NoteBytes parentId;
     private final String title;
-    private final ContentBox appBox;
+    private final AppBox appBox;
     private final HBox tabBox;
     private final Button closeBtn;
     private final Label titleLabel;
@@ -35,7 +35,7 @@ public class ContentTab {
 
     
 
-    public ContentTab(NoteBytesArray id, NoteBytes parentId, String title, ContentBox content, TabWindow initialWindow) {
+    public ContentTab(NoteBytesArray id, NoteBytes parentId, String title, AppBox content, TabWindow initialWindow) {
         this.id = id;
         this.parentId = parentId;
         this.title = title;
@@ -156,7 +156,7 @@ public class ContentTab {
     public NoteBytesArray getId() { return id; }
     public NoteBytes getParentId() { return parentId; }
     public String getTitle() { return title; }
-    public ContentBox getAppBox() { return appBox; }
+    public AppBox getAppBox() { return appBox; }
     
     
     public HBox getTabBox() { 

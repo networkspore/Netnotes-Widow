@@ -1,19 +1,19 @@
-package io.netnotes.gui.fx.app.apps.appManager;
+package io.netnotes.gui.fx.app.apps.pluginManager;
 
 import io.netnotes.engine.noteBytes.NoteBytes;
-import io.netnotes.gui.fx.app.apps.AppInformation;
-import io.netnotes.gui.fx.display.tabManager.ContentBox;
+import io.netnotes.engine.plugins.OSGiPluginInformation;
+import io.netnotes.gui.fx.display.contentManager.AppBox;
 
 /**
  * Detailed view for a specific app.
  */
-class AppDetailsBox extends ContentBox {
+class PluginDetailsBox extends AppBox {
     
-    private final AppInformation m_appInfo;
+    private final OSGiPluginInformation m_appInfo;
 
     
-    public AppDetailsBox(javafx.stage.Stage stage,
-                        AppInformation appInfo,
+    public PluginDetailsBox(javafx.stage.Stage stage,
+                        OSGiPluginInformation appInfo,
                         java.util.concurrent.ExecutorService execService) {
         super(new NoteBytes("AppDetails_" + appInfo.getName()), appInfo.getName());
         m_appInfo = appInfo;
