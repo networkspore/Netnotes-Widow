@@ -4,6 +4,7 @@ import javafx.animation.KeyFrame;
 import javafx.animation.Timeline;
 import javafx.application.HostServices;
 import javafx.beans.value.ChangeListener;
+import javafx.scene.Cursor;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
@@ -74,6 +75,7 @@ public class LayoutCanvas extends BufferedCanvasView {
     private CursorSelectionSystem.CursorPosition m_cursor;
     private CursorSelectionSystem.Selection m_selection;
     private boolean m_isSelecting;
+    private boolean m_gridResizeEnabled = true;
     
     // ========== Visual State ==========
     
@@ -98,6 +100,11 @@ public class LayoutCanvas extends BufferedCanvasView {
     private Color m_cursorColor;
     private Color m_selectionColor;
     private Insets m_insets;
+
+    // ========== Grid Resize State ==========
+    private GridResizeHandler.ResizeOperation m_activeResize = null;
+    private GridResizeHandler.ResizeHandle m_hoverHandle = null;
+    private LayoutEngine.LayoutResult m_resizingContainer = null;
     
     // ========== Dimensions ==========
     
@@ -248,6 +255,11 @@ public class LayoutCanvas extends BufferedCanvasView {
         drawOverlayLayer(g2d, width, height);
     }
 
+ 
+
+
+   
+
     /**
      * Render layout result with virtual scrolling optimization.
      * Skips segments outside visible bounds (viewport + margin).
@@ -330,6 +342,9 @@ public class LayoutCanvas extends BufferedCanvasView {
                     break;
             }
         }
+
+        drawGridResizeHandles(g2d, result, offsetX, offsetY);
+     
         
         // Render children with same virtual scrolling bounds
         for (LayoutEngine.LayoutResult child : result.children) {
@@ -337,6 +352,42 @@ public class LayoutCanvas extends BufferedCanvasView {
                                      visibleTop, visibleBottom, 
                                      visibleLeft, visibleRight,
                                      hasSelection, selStart, selEnd);
+        }
+    }
+
+
+    /**
+     * Recursively draw resize handles for all resizable grid containers
+     */
+    private void drawGridResizeHandles(Graphics2D g2d, LayoutEngine.LayoutResult result, int offsetX, int offsetY) {
+        if (result == null) return;
+        
+        // Draw handles for this container if it's a resizable grid
+        if (result.segment.hasGridLayout() && result.gridLayoutResult != null) {
+            GridLayoutProperties gridProps = result.segment.getGridLayout();
+            
+            if (gridProps.resizableRows || gridProps.resizableColumns) {
+                // Only draw handles if we're hovering over this container or actively resizing
+                boolean isActive = (m_resizingContainer == result) || 
+                                (m_hoverHandle != null && m_resizingContainer == result);
+                
+                if (isActive || m_activeResize != null) {
+                    // Apply offset to container bounds
+                    Rectangle offsetBounds = new Rectangle(
+                        result.bounds.x + offsetX,
+                        result.bounds.y + offsetY,
+                        result.bounds.width,
+                        result.bounds.height
+                    );
+                    
+                    GridResizeHandler.drawHandles(
+                        g2d,
+                        result.gridLayoutResult,
+                        gridProps,
+                        offsetBounds
+                    );
+                }
+            }
         }
     }
 
@@ -415,8 +466,32 @@ public class LayoutCanvas extends BufferedCanvasView {
         if (m_isFocused && m_cursorVisible && !hasSelection) {
             renderCursor(g2d, paddingLeft - m_scrollX, paddingTop - m_scrollY);
         }
-        
+        drawGridResizePreviewOverlay(g2d);
         g2d.setClip(null);
+    }
+
+    /**
+     * Draw grid resize preview overlay (visual feedback during drag)
+     */
+    private void drawGridResizePreviewOverlay(Graphics2D g2d) {
+        if (m_activeResize == null || m_resizingContainer == null) return;
+        
+        int paddingLeft = m_insets.left;
+        int paddingTop = m_insets.top;
+        
+        // Apply offset to container bounds
+        Rectangle offsetBounds = new Rectangle(
+            m_resizingContainer.bounds.x + paddingLeft - m_scrollX,
+            m_resizingContainer.bounds.y + paddingTop - m_scrollY,
+            m_resizingContainer.bounds.width,
+            m_resizingContainer.bounds.height
+        );
+        
+        GridResizeHandler.drawResizePreview(
+            g2d,
+            m_activeResize,
+            offsetBounds
+        );
     }
     
      /**
@@ -857,6 +932,7 @@ public class LayoutCanvas extends BufferedCanvasView {
         setOnMouseDragged(this::handleMouseDragged);
         setOnMouseReleased(this::handleMouseReleased);
         setOnMouseClicked(this::handleMouseClicked);
+        setOnMouseMoved(this::handleMouseMoved);
         setOnScroll(this::handleScroll);
     }
     
@@ -1065,7 +1141,57 @@ public class LayoutCanvas extends BufferedCanvasView {
         event.consume();
     }
 
-     
+    
+    /**
+     * Handle mouse moved - detect resize handles and update cursor
+     */
+    private void handleMouseMoved(MouseEvent event) {
+        if (m_layoutResult == null) return;
+        
+        // Convert JavaFX mouse coordinates to canvas coordinates
+        int paddingLeft = m_insets.left;
+        int paddingTop = m_insets.top;
+        int x = (int) event.getX() - paddingLeft + m_scrollX;
+        int y = (int) event.getY() - paddingTop + m_scrollY;
+        
+        // Clear hover handle
+        m_hoverHandle = null;
+        m_resizingContainer = null;
+        
+        // Check if we're over any grid container's resize handle
+        Point mousePoint = new Point(x, y);
+        LayoutEngine.LayoutResult containerWithHandle = findGridContainerWithHandle(
+            m_layoutResult, 
+            mousePoint
+        );
+        
+        if (containerWithHandle != null) {
+            LayoutSegment segment = containerWithHandle.segment;
+            GridLayoutProperties gridProps = segment.getGridLayout();
+            
+            if (gridProps != null && containerWithHandle.gridLayoutResult != null) {
+                GridResizeHandler.ResizeHandle handle = GridResizeHandler.detectHandle(
+                    mousePoint,
+                    containerWithHandle.gridLayoutResult,
+                    gridProps,
+                    containerWithHandle.bounds  // Use original bounds, not offset
+                );
+                
+                if (handle != null) {
+                    m_hoverHandle = handle;
+                    m_resizingContainer = containerWithHandle;
+                    
+                    // Update cursor
+                    setCursor(GridResizeHandler.getCursorForHandle(handle.type));
+                    requestRender();  // Add this to show handles
+                    return;
+                }
+            }
+        }
+        
+        // No handle found - reset cursor
+        setCursor(Cursor.DEFAULT);
+    }
     
   
     private void handleMousePressed(MouseEvent event) {
@@ -1078,6 +1204,18 @@ public class LayoutCanvas extends BufferedCanvasView {
         
         int x = (int) event.getX() - paddingLeft + m_scrollX;
         int y = (int) event.getY() - paddingTop + m_scrollY;
+
+        if (m_hoverHandle != null && m_resizingContainer != null) {
+            // Start resize operation
+            m_activeResize = new GridResizeHandler.ResizeOperation(
+                m_hoverHandle,
+                x,
+                y
+            );
+            requestRender();
+            event.consume();
+            return;
+        }
         
         LayoutEngine.LayoutResult clicked = m_layoutResult.findAtPoint(x, y);
         if (clicked != null) {
@@ -1094,6 +1232,47 @@ public class LayoutCanvas extends BufferedCanvasView {
             m_cursorVisible = true;
             requestRender();
         }
+    }
+
+     /**
+     * Find grid container that has a resize handle at the given point
+     * Searches depth-first to prioritize nested grids
+     */
+    private LayoutEngine.LayoutResult findGridContainerWithHandle(
+        LayoutEngine.LayoutResult result,
+        Point point
+    ) {
+        if (result == null) return null;
+        
+        // Check children first (depth-first)
+        for (LayoutEngine.LayoutResult child : result.children) {
+            LayoutEngine.LayoutResult found = findGridContainerWithHandle(child, point);
+            if (found != null) return found;
+        }
+        
+        // Check if this result is a grid container with handles at point
+        if (result.segment.hasGridLayout() && 
+            result.gridLayoutResult != null &&
+            result.bounds.contains(point.x, point.y)) {
+            
+            GridLayoutProperties gridProps = result.segment.getGridLayout();
+            
+            // Check if resizing is enabled
+            if (gridProps.resizableRows || gridProps.resizableColumns) {
+                GridResizeHandler.ResizeHandle handle = GridResizeHandler.detectHandle(
+                    point,
+                    result.gridLayoutResult,
+                    gridProps,
+                    result.bounds
+                );
+                
+                if (handle != null) {
+                    return result;
+                }
+            }
+        }
+        
+        return null;
     }
     
   
@@ -1139,6 +1318,25 @@ public class LayoutCanvas extends BufferedCanvasView {
         if (!m_isSelecting || m_layoutResult == null) return;
         double mouseX = event.getX();
         double mouseY = event.getY();
+
+        if (m_activeResize != null) {
+            int paddingLeft = m_insets.left;
+            int paddingTop = m_insets.top;
+            
+            int x = (int) event.getX() - paddingLeft + m_scrollX;
+            int y = (int) event.getY() - paddingTop + m_scrollY;
+            // Update resize operation
+            GridResizeHandler.updateResize(
+                m_activeResize,
+                x,
+                y
+            );
+            
+            // Request render to show preview
+            requestRender();
+            event.consume();
+            return;
+        }
         
         pendingDragEvent.set(() -> processDragEvent(mouseX, mouseY));
 
@@ -1272,8 +1470,35 @@ public class LayoutCanvas extends BufferedCanvasView {
     }
 
     private void handleMouseReleased(MouseEvent event) {
-        m_isSelecting = false;
         
+        m_isSelecting = false;
+
+        if (m_activeResize != null && m_resizingContainer != null) {
+            LayoutSegment segment = m_resizingContainer.segment;
+            GridLayoutProperties gridProps = segment.getGridLayout();
+            
+            if (gridProps != null) {
+                // Apply the resize
+                GridResizeHandler.applyResize(
+                    m_activeResize,
+                    gridProps,
+                    gridProps.minTrackSize
+                );
+                
+                // Mark segment as dirty
+                segment.markDirty();
+                
+                invalidateLayout();
+            }
+            
+            // Clear resize state
+            m_activeResize = null;
+            m_resizingContainer = null;
+            
+            event.consume();
+            return;
+        }
+
         if (m_selection != null && m_selection.isEmpty()) {
             clearSelection();
         }
@@ -1749,6 +1974,31 @@ public class LayoutCanvas extends BufferedCanvasView {
             m_contentDirty = true;
         }
     }
+
+    // ========== Public API ==========
+
+    public void setGridResizeEnabled(boolean enabled) {
+        m_gridResizeEnabled = enabled;
+        if (!enabled) {
+            m_activeResize = null;
+            m_hoverHandle = null;
+            m_resizingContainer = null;
+            setCursor(Cursor.DEFAULT);
+        }
+        requestRender();
+    }
+
+    public boolean isGridResizeEnabled() { return m_gridResizeEnabled; }
+    public boolean isResizing() { return m_activeResize != null; }
+
+
+    public void cancelResize() {
+        if (m_activeResize != null) {
+            m_activeResize = null;
+            m_resizingContainer = null;
+            requestRender();
+        }
+    }
     
     public void scrollToSegment(LayoutSegment segment, boolean render) {
         if (m_layoutResult == null) return;
@@ -1778,6 +2028,8 @@ public class LayoutCanvas extends BufferedCanvasView {
             }
         }
     }
+
+   
     
     public static LayoutSegment createTextSegment(String text) {
         LayoutSegment segment = new LayoutSegment(LayoutSegment.SegmentType.TEXT);

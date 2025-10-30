@@ -42,10 +42,16 @@ import java.util.List;
 public class LayoutSegment {
     private List<RichTextSpan> m_textSpans = null;
     private LinkProperties m_linkProperties = null;
+    private GridLayoutProperties m_gridLayout = null;
+
+
+    // ========== Image Caching ==========
     private transient BufferedImage m_cachedScaledImage = null;
     private transient int m_cachedImageWidth = -1;
     private transient int m_cachedImageHeight = -1;
     private transient ScalingAlgorithm m_cachedAlgorithm = null;
+    
+
     // ========== Enums ==========
     
     /**
@@ -620,6 +626,11 @@ public class LayoutSegment {
             StyleProperties.fromNoteBytesObject((NoteBytesObject) styleNb) : 
             new StyleProperties();
 
+        NoteBytes gridLayoutNb = m_data.get("gridLayout") != null ? m_data.get("gridLayout").getValue() : null;
+        if (gridLayoutNb instanceof NoteBytesObject) {
+            m_gridLayout = GridLayoutProperties.fromNoteBytesObject((NoteBytesObject) gridLayoutNb);
+        }
+
         // Rich text spans
         NoteBytes spansNb = m_data.get("textSpans") != null ? m_data.get("textSpans").getValue() : null;
         if (spansNb instanceof NoteBytesArray) {
@@ -684,6 +695,9 @@ public class LayoutSegment {
             new NoteBytesPair("interaction", m_interaction.toNoteBytesObject()),
             new NoteBytesPair("style", m_style.toNoteBytesObject())
         });
+        if (m_gridLayout != null) {
+            m_data.add("gridLayout", m_gridLayout.toNoteBytesObject());
+        }
         
         // Content
         switch (m_type) {
@@ -713,7 +727,7 @@ public class LayoutSegment {
     public LayoutProperties getLayout() { return m_layout; }
     public InteractionProperties getInteraction() { return m_interaction; }
     public StyleProperties getStyle() { return m_style; }
-
+    public GridLayoutProperties getGridLayout() { return m_gridLayout; }
 
     public NoteIntegerArray getTextContent() { return m_textContent; }
     public NoteBytesArray getChildren() { return m_children; }
@@ -812,6 +826,11 @@ public class LayoutSegment {
     }
 
 
+    public void setGridLayout(GridLayoutProperties gridLayout) {
+        m_gridLayout = gridLayout;
+        m_dataDirty = true;
+    }
+
     // ========== Text Content Setters ==========
     
     public void setTextContent(String text) {
@@ -857,6 +876,10 @@ public class LayoutSegment {
     
     public boolean hasTextSpans() {
         return m_textSpans != null && !m_textSpans.isEmpty();
+    }
+
+    public boolean hasGridLayout() {
+        return m_gridLayout != null;
     }
     
     /**
@@ -1090,6 +1113,94 @@ public class LayoutSegment {
         m_dataDirty = true;
         return this;
     }
+
+    public LayoutSegment withGridLayout(GridLayoutProperties gridLayout) {
+        m_gridLayout = gridLayout;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withDirection(GridLayoutProperties.Direction direction) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.direction = direction;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withRows(List<GridLayoutProperties.TrackSize> rows) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.rows = rows;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withColumns(List<GridLayoutProperties.TrackSize> columns) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.columns = columns;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withResizableRows(boolean resizable) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.resizableRows = resizable;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withResizableColumns(boolean resizable) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.resizableColumns = resizable;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withGap(int rowGap, int colGap) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.gap = new GridLayoutProperties.Gap(rowGap, colGap);
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withOverflow(GridLayoutProperties.Overflow overflow) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.overflow = overflow;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withJustifyContent(GridLayoutProperties.JustifyContent justify) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.justifyContent = justify;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withAlignItems(GridLayoutProperties.AlignItems align) {
+        if (m_gridLayout == null) {
+            m_gridLayout = new GridLayoutProperties();
+        }
+        m_gridLayout.alignItems = align;
+        m_dataDirty = true;
+        return this;
+    }
+
     // ========== Content Length ==========
     
     public int getContentLength() {

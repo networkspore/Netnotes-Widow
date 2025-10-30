@@ -248,7 +248,7 @@ public class HtmlToSegmentBuilder {
     
     private static LayoutSegment createImage(HtmlNode node) {
         String src = node.attributes.get("src");
-        String alt = node.attributes.get("alt");
+        //String alt = node.attributes.get("alt");
         String widthStr = node.attributes.get("width");
         String heightStr = node.attributes.get("height");
         

@@ -111,7 +111,8 @@ public class LayoutEngine {
         public List<LayoutResult> children;
         public int globalStartOffset;
         public int globalEndOffset;
-
+        public GridLayoutEngine.GridLayoutResult gridLayoutResult = null;
+        
         private GlyphBoundaryCache glyphCache = null;
 
         
@@ -214,16 +215,101 @@ public class LayoutEngine {
     /**
      * Layout a container segment
      */
-    private void layoutContainer(
+    private void layoutContainer(LayoutSegment segment, Constraints constraints, LayoutResult result, LayoutContext ctx) {
+        if (!segment.isContainer() || !segment.hasChildren()) {
+            return;
+        }
+        
+        // Check if this is a grid layout container
+        if (segment.hasGridLayout()) {
+            layoutGridContainer(segment, constraints, result, ctx);
+            return;
+        }
+        
+        // Standard flow layout (original implementation)
+        layoutFlowContainer(segment, constraints, result, ctx);
+    }
+
+    /**
+     * Layout a grid-based container
+     */
+    private void layoutGridContainer(
         LayoutSegment segment,
         Constraints constraints,
         LayoutResult result,
         LayoutContext ctx
     ) {
-        if (!segment.isContainer() || !segment.hasChildren()) {
-            return;
+        GridLayoutProperties gridProps = segment.getGridLayout();
+        NoteBytesArray children = segment.getChildren();
+        
+        // Apply padding
+        Insets padding = segment.getLayout().padding;
+        
+        // Compute grid layout
+        GridLayoutEngine.GridLayoutResult gridResult = GridLayoutEngine.computeLayout(
+            segment,
+            children,
+            constraints.maxWidth,
+            constraints.maxHeight,
+            gridProps
+        );
+        
+        // Create layout results for children
+        for (int i = 0; i < children.size() && i < gridResult.cellBounds.size(); i++) {
+            NoteBytes item = children.get(i);
+            if (!(item instanceof NoteBytesObject)) continue;
+            
+            LayoutSegment childSegment = new LayoutSegment((NoteBytesObject) item);
+            
+            // Skip display:none
+            if (childSegment.getLayout().display == LayoutSegment.Display.NONE) {
+                continue;
+            }
+            
+            LayoutResult childResult = new LayoutResult(childSegment);
+            result.children.add(childResult);
+            
+            // Set bounds from grid computation
+            childResult.bounds = gridResult.cellBounds.get(i);
+            
+            // Update cursor offsets
+            childResult.globalStartOffset = ctx.globalOffset;
+            ctx.globalOffset += childSegment.getContentLength();
+            childResult.globalEndOffset = ctx.globalOffset;
+            
+            // Build glyph cache for text segments
+            if (childSegment.getType() == LayoutSegment.SegmentType.TEXT) {
+                buildGlyphCache(childSegment, childResult);
+            }
+            
+            // Recursively layout children
+            if (childSegment.isContainer()) {
+                Constraints childConstraints = new Constraints(
+                    childResult.bounds.width,
+                    childResult.bounds.height
+                );
+                layoutContainer(childSegment, childConstraints, childResult, ctx);
+            }
         }
         
+        // Set container bounds
+        result.bounds.width = gridResult.totalWidth + padding.left + padding.right;
+        result.bounds.height = gridResult.totalHeight + padding.top + padding.bottom;
+        
+        // Store grid result for potential resize operations
+        // You might want to add this to LayoutResult:
+        // result.gridLayoutResult = gridResult;
+    }
+
+    /**
+     * Layout a standard flow container (original implementation)
+     */
+    private void layoutFlowContainer(
+        LayoutSegment segment,
+        Constraints constraints,
+        LayoutResult result,
+        LayoutContext ctx
+    ) {
         // Apply padding
         Insets padding = segment.getLayout().padding;
         Constraints innerConstraints = constraints.deflate(padding);
@@ -297,7 +383,7 @@ public class LayoutEngine {
         result.bounds.width = contentWidth + padding.left + padding.right;
         result.bounds.height = contentHeight + padding.top + padding.bottom;
     }
-        
+            
         /**
      * Layout a block-level segment
      */
