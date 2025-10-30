@@ -360,7 +360,7 @@ public class LayoutArea extends BorderPane {
     
     // ========== Layout Area Access ==========
     
-    public LayoutCanvas getLayoutArea() {
+    public LayoutCanvas getLayoutCanvas() {
         return m_layoutArea;
     }
     

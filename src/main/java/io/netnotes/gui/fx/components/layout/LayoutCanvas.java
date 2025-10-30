@@ -17,6 +17,7 @@ import io.netnotes.engine.noteBytes.NoteIntegerArray;
 import io.netnotes.engine.utils.MathHelpers;
 
 import io.netnotes.gui.fx.components.canvas.BufferedCanvasView;
+import io.netnotes.gui.fx.components.layout.LayoutEvents.*;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.GraphicsContextPool;
 import io.netnotes.gui.fx.display.TextRenderer;
@@ -35,6 +36,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 
 
 /**
@@ -121,7 +123,14 @@ public class LayoutCanvas extends BufferedCanvasView {
     
     private ChangeListener<Number> widthListener;
     private ChangeListener<Number> heightListener;
-    
+
+    // Event consumers for streaming interface
+    private Consumer<CursorMoveEvent> m_onCursorMove;
+    private Consumer<TextChangeEvent> m_onTextChange;
+    private Consumer<SegmentClickEvent> m_onSegmentClick;
+    private Consumer<SelectionChangeEvent> m_onSelectionChange;
+    private Consumer<LayoutCompleteEvent> m_onLayoutComplete;
+        
     // ========== Constructors ==========
     
     public LayoutCanvas() {
@@ -610,6 +619,8 @@ public class LayoutCanvas extends BufferedCanvasView {
             m_layoutResult = null;
             return;
         }
+
+        long startTime = System.currentTimeMillis();
         
         int availableWidth = m_preferredWidth - m_insets.left - m_insets.right;
         int availableHeight = m_preferredHeight - m_insets.top - m_insets.bottom;
@@ -636,6 +647,19 @@ public class LayoutCanvas extends BufferedCanvasView {
         if (m_layoutResult != null) {
             m_layoutCache.put(layoutKey, m_layoutResult);
             updateScrollBounds();
+        }
+
+
+
+        long endTime = System.currentTimeMillis();
+        
+        // FIRE LAYOUT COMPLETE EVENT
+        if (m_onLayoutComplete != null && m_layoutResult != null) {
+            m_onLayoutComplete.accept(new LayoutCompleteEvent(
+                m_layoutResult.bounds.width,
+                m_layoutResult.bounds.height,
+                endTime - startTime
+            ));
         }
     }
 
@@ -950,6 +974,8 @@ public class LayoutCanvas extends BufferedCanvasView {
             
             if (shift) startSelection();
             else clearSelection();
+
+            CursorSelectionSystem.CursorPosition oldCursor = m_cursor.copy();
             
             if (code == KeyCode.LEFT) {
                 m_cursor = m_navigator.moveBackward(m_cursor);
@@ -959,6 +985,17 @@ public class LayoutCanvas extends BufferedCanvasView {
                 m_cursor = moveUp(m_cursor);
             } else if (code == KeyCode.DOWN) {
                 m_cursor = moveDown(m_cursor);
+            }
+
+            if (!oldCursor.equals(m_cursor) && m_onCursorMove != null) {
+                LayoutSegment segment = m_navigator.getSegmentAt(m_cursor);
+                if (segment != null) {
+                    m_onCursorMove.accept(new CursorMoveEvent(
+                        segment, 
+                        m_cursor.getLocalOffset(), 
+                        m_cursor.getGlobalOffset()
+                    ));
+                }
             }
             
             if (shift) updateSelection();
@@ -1230,6 +1267,15 @@ public class LayoutCanvas extends BufferedCanvasView {
             m_selection = new CursorSelectionSystem.Selection(m_cursor, m_cursor);
             m_isSelecting = true;
             m_cursorVisible = true;
+
+            if (m_onCursorMove != null) {
+                m_onCursorMove.accept(new CursorMoveEvent(
+                    clicked.segment, 
+                    m_cursor.getLocalOffset(), 
+                    m_cursor.getGlobalOffset()
+                ));
+            }
+
             requestRender();
         }
     }
@@ -1423,6 +1469,24 @@ public class LayoutCanvas extends BufferedCanvasView {
         } else if (event.getClickCount() == 1) {
             // Single click - check for link
             checkLinkClick(event);
+
+            if (m_onSegmentClick != null && m_layoutResult != null) {
+                int paddingLeft = m_insets.left;
+                int paddingTop = m_insets.top;
+                
+                int x = (int) event.getX() - paddingLeft + m_scrollX;
+                int y = (int) event.getY() - paddingTop + m_scrollY;
+                
+                LayoutEngine.LayoutResult clicked = m_layoutResult.findAtPoint(x, y);
+                if (clicked != null) {
+                    m_onSegmentClick.accept(new SegmentClickEvent(
+                        clicked.segment, 
+                        x, 
+                        y, 
+                        1
+                    ));
+                }
+            }
         }
     }
 
@@ -1596,12 +1660,26 @@ public class LayoutCanvas extends BufferedCanvasView {
                 m_cursor
             );
            
+            if (m_onSelectionChange != null) {
+                CursorSelectionSystem.Selection normalized = m_selection.normalized();
+                m_onSelectionChange.accept(new SelectionChangeEvent(
+                    m_selection,
+                    normalized.getStart().getGlobalOffset(),
+                    normalized.getEnd().getGlobalOffset()
+                ));
+            }
         }
     }
     
     private void clearSelection() {
         if (m_selection != null) {
             m_selection = null;
+
+            if (m_onSelectionChange != null) {
+                m_onSelectionChange.accept(new SelectionChangeEvent(
+                    null, 0, 0
+                ));
+            }
         }
     }
     
@@ -1630,10 +1708,23 @@ public class LayoutCanvas extends BufferedCanvasView {
         NoteIntegerArray content = segment.getTextContent();
         if (content == null) return;
         
-        content.insert(m_cursor.getLocalOffset(), text);
+        String oldText = content.toString();
+        int insertOffset = m_cursor.getLocalOffset();
         
-        // NEW: Update navigator incrementally for text changes
+        content.insert(m_cursor.getLocalOffset(), text);
+    
         m_navigator.notifyTextInsert(m_cursor, text.length());
+
+        if (m_onTextChange != null) {
+        String newText = content.toString();
+            m_onTextChange.accept(new TextChangeEvent(
+                segment, 
+                oldText, 
+                newText, 
+                insertOffset, 
+                text.length()
+            ));
+        }
         
         m_cursor = m_navigator.moveForward(m_cursor);
         invalidateLayout();
@@ -1653,11 +1744,25 @@ public class LayoutCanvas extends BufferedCanvasView {
         
         NoteIntegerArray content = segment.getTextContent();
         if (content == null || m_cursor.getLocalOffset() == 0) return;
+
+        String oldText = content.toString();
+        int deleteOffset = m_cursor.getLocalOffset() - 1;
         
-        content.deleteCodePointAt(m_cursor.getLocalOffset() - 1);
+        content.deleteCodePointAt(deleteOffset);
         
-        // NEW: Update navigator incrementally
+        
         m_navigator.notifyTextDelete(m_cursor, 1);
+
+        if (m_onTextChange != null) {
+            String newText = content.toString();
+            m_onTextChange.accept(new TextChangeEvent(
+                segment, 
+                oldText, 
+                newText, 
+                deleteOffset, 
+                -1 // negative means deletion
+            ));
+        }
         
         m_cursor = m_navigator.moveBackward(m_cursor);
         
@@ -1871,6 +1976,29 @@ public class LayoutCanvas extends BufferedCanvasView {
         if (m_layoutResult == null) return new ArrayList<>();
         return m_layoutResult.flatten();
     }
+
+    // ========== Consumer setters ==========
+
+    public void setOnCursorMove(Consumer<CursorMoveEvent> consumer) {
+        m_onCursorMove = consumer;
+    }
+
+    public void setOnTextChange(Consumer<TextChangeEvent> consumer) {
+        m_onTextChange = consumer;
+    }
+
+    public void setOnSegmentClick(Consumer<SegmentClickEvent> consumer) {
+        m_onSegmentClick = consumer;
+    }
+
+    public void setOnSelectionChange(Consumer<SelectionChangeEvent> consumer) {
+        m_onSelectionChange = consumer;
+    }
+
+    public void setOnLayoutComplete(Consumer<LayoutCompleteEvent> consumer) {
+        m_onLayoutComplete = consumer;
+    }
+
 
     // ======== Getters / setters ==========
 
