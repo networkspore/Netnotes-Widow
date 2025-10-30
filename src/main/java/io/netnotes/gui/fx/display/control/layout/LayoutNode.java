@@ -14,14 +14,16 @@ public class LayoutNode {
     private final Stage stage;
     private final LayoutCallback callback;
     private final List<LayoutNode> children = new ArrayList<>();
+    private final Runnable applyCallback;
     private LayoutNode parent;
     private LayoutData calculatedLayout;
     private int depth = -1;
     
-    public LayoutNode(Node node, Stage stage, LayoutCallback callback) {
+    public LayoutNode(Node node, Stage stage, LayoutCallback callback, Runnable applyCallback) {
         this.node = node;
         this.stage = stage;
         this.callback = callback;
+        this.applyCallback = applyCallback;
     }
     
     public void addChild(LayoutNode child) {
@@ -39,6 +41,9 @@ public class LayoutNode {
         if (calculatedLayout != null) {
             calculatedLayout.applyTo(node);
             calculatedLayout = null;
+            if (applyCallback != null) {
+                applyCallback.run();
+            }
         }
     }
     

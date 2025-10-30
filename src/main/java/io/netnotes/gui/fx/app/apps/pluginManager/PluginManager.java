@@ -1,6 +1,6 @@
 package io.netnotes.gui.fx.app.apps.pluginManager;
 
-import java.util.ArrayList;
+import java.io.PipedOutputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -8,28 +8,29 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import io.netnotes.engine.AppDataInterface;
 import io.netnotes.engine.noteBytes.NoteBytes;
+import io.netnotes.engine.noteBytes.NoteBytesObject;
 import io.netnotes.engine.noteBytes.NoteBytesReadOnly;
 import io.netnotes.engine.noteBytes.processing.AsyncNoteBytesWriter;
-import io.netnotes.engine.plugins.OSGiPluginDownloader;
-import io.netnotes.engine.plugins.OSGiPluginFactory;
+import io.netnotes.engine.noteFiles.NoteFile;
+import io.netnotes.engine.plugins.OSGiPluginInformation;
+import io.netnotes.engine.plugins.OSGiPluginMetaData;
 import io.netnotes.engine.plugins.OSGiPluginRegistry;
 import io.netnotes.engine.plugins.OSGiPluginRelease;
-import io.netnotes.engine.plugins.PluginMetaData;
+import io.netnotes.engine.plugins.OSGiUpdateLoader;
 import io.netnotes.engine.utils.github.GitHubInfo;
 import io.netnotes.engine.utils.streams.StreamUtils.StreamProgressTracker;
+import io.netnotes.engine.utils.streams.UrlStreamHelpers;
 import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.display.contentManager.AppBox;
 import io.netnotes.gui.fx.display.contentManager.AppManagerInterface;
 import io.netnotes.gui.fx.display.contentManager.IApp;
 import io.netnotes.gui.fx.display.contentManager.SideBarButton;
+import io.netnotes.gui.fx.utils.TaskUtils;
 import javafx.scene.image.Image;
 
 /**
- * Enhanced PluginManager that handles:
- * - Downloading plugins from GitHub
- * - Installing plugins to NoteFiles
- * - Managing plugin registry
- * - Loading plugins via OSGi
+ * Plugin Manager - Manages plugin metadata, downloads, and persistence.
+ * Does NOT handle OSGi bundle loading - only manages the plugin registry and downloads.
  */
 public class PluginManager implements IApp {
     
@@ -46,15 +47,16 @@ public class PluginManager implements IApp {
     
     // Plugin management components
     private OSGiPluginRegistry m_pluginRegistry;
-    private OSGiPluginDownloader m_pluginDownloader;
-    private OSGiPluginFactory m_osgiFactory;
-    
-    // Track loaded plugin bundles
-    private Map<NoteBytes, org.osgi.framework.Bundle> m_loadedBundles = new ConcurrentHashMap<>();
+    private OSGiUpdateLoader m_updateLoader;
+    private PluginGroupManager m_groupManager;
 
     public PluginManager() {
         m_appId = new NoteBytesReadOnly(new NoteBytes("PluginManager"));
         m_gitHubInfo = FxResourceFactory.GITHUB_PROJECT_INFO;
+
+        Image appIcon = new Image(FxResourceFactory.WIDOW120);
+        m_sideBarButton = new SideBarButton(appIcon, APP_NAME);
+        m_sideBarButton.setOnAction(_ -> openMainTab());
     }
     
     @Override
@@ -71,34 +73,34 @@ public class PluginManager implements IApp {
     public void init(AppDataInterface appDataInterface, AppManagerInterface tabManagerInterface) {
         m_appData = appDataInterface;
         m_tabManager = tabManagerInterface;
-        
-        // Initialize plugin management components
-        m_pluginRegistry = new OSGiPluginRegistry(m_appData, m_appData.getExecService());
-        m_pluginDownloader = new OSGiPluginDownloader(m_appData, m_appData.getExecService());
-        m_osgiFactory = new OSGiPluginFactory(m_appData);
-        
-        // Initialize registry and load enabled plugins
-        m_pluginRegistry.initialize()
-            .thenCompose(v -> loadEnabledPlugins())
-            .thenAccept(bundles -> {
-                m_loadedBundles.putAll(bundles);
-                System.out.println("Loaded " + bundles.size() + " plugins at startup");
-            })
-            .exceptionally(error -> {
-                System.err.println("Error loading plugins: " + error.getMessage());
-                error.printStackTrace();
-                return null;
-            });
-        
-        // Create sidebar button
-        Image appIcon = new Image(FxResourceFactory.WIDOW120);
-        m_sideBarButton = new SideBarButton(appIcon, APP_NAME);
-        m_sideBarButton.setOnAction(_ -> openMainTab());
+        m_pluginRegistry = new OSGiPluginRegistry(m_appData.getExecService());
+        m_updateLoader = new OSGiUpdateLoader(m_gitHubInfo, "plugins.json", m_appData.getExecService());
+        m_groupManager = new PluginGroupManager();
+ 
+        // Initialize registry
+        m_appData.getNoteFile(OSGiPluginRegistry.PLUGINS_REGISTRY_PATH).thenAccept(noteFile ->
+            m_pluginRegistry.initialize(noteFile)
+                .thenAccept(_ -> {
+                    System.out.println("Plugin registry initialized with " + 
+                        m_pluginRegistry.getInstalledPlugins().size() + " plugins");
+                })
+                .exceptionally(error -> {
+                    System.err.println("Error initializing plugin registry: " + error.getMessage());
+                    error.printStackTrace();
+                    return null;
+                }));
     }
     
     @Override
     public SideBarButton getSideBarButton() {
         return m_sideBarButton;
+    }
+    
+    /**
+     * Get the AppDataInterface for accessing NoteFiles.
+     */
+    public AppDataInterface getAppData() {
+        return m_appData;
     }
     
     /**
@@ -113,7 +115,7 @@ public class PluginManager implements IApp {
                 m_gitHubInfo
             );
             
-            // Pass plugin manager instance to UI for operations
+            // Pass plugin manager instance to UI
             managerBox.setPluginManager(this);
             
             m_tabManager.addTab(tabId, APP_NAME, managerBox);
@@ -123,210 +125,177 @@ public class PluginManager implements IApp {
     }
     
     /**
-     * Install a plugin from a GitHub release.
+     * Get the plugin group manager for UI operations.
      */
-    public CompletableFuture<PluginMetaData> installPlugin(OSGiPluginRelease release, StreamProgressTracker tracker) {
-        System.out.println("Starting installation of: " + release.getPluginInfo().getName());
-        
-        return m_pluginDownloader.downloadAndInstall(release, tracker)
-            .thenCompose(installResult -> {
-                // Create plugin metadata
-                PluginMetaData metadata = new PluginMetaData(
-                    installResult.getPluginId(),
-                    installResult.getVersion(),
-                    true, // Enabled by default
-                    installResult.getJarPath()
-                );
-                
-                // Register in registry
-                return m_pluginRegistry.registerPlugin(metadata)
-                    .thenApply(v -> metadata);
-            })
-            .thenCompose(metadata -> {
-                // Load the plugin immediately if enabled
-                return loadPlugin(metadata)
-                    .thenApply(bundle -> {
-                        if (bundle != null) {
-                            m_loadedBundles.put(metadata.getPluginId(), bundle);
-                            System.out.println("Plugin loaded: " + metadata.getPluginId().getAsString());
-                        }
-                        return metadata;
-                    });
+    public PluginGroupManager getGroupManager() {
+        return m_groupManager;
+    }
+    
+    /**
+     * Get the plugin registry.
+     */
+    public OSGiPluginRegistry getRegistry() {
+        return m_pluginRegistry;
+    }
+    
+    /**
+     * Get the update loader for fetching available plugins.
+     */
+    public OSGiUpdateLoader getUpdateLoader() {
+        return m_updateLoader;
+    }
+    
+    /**
+     * Load available plugins from GitHub and update the group manager.
+     */
+    public CompletableFuture<List<OSGiPluginInformation>> loadAvailablePlugins() {
+        return m_updateLoader.loadAvailableApps()
+            .thenApply(availableApps -> {
+                m_groupManager.buildFromRegistry(m_pluginRegistry, availableApps);
+                System.out.println("Loaded " + availableApps.size() + " available plugins");
+                return availableApps;
             });
     }
     
     /**
-     * Uninstall a plugin.
+     * Install a plugin from a GitHub release.
+     * Downloads the JAR to a NoteFile and registers it in the plugin registry.
      */
-    public CompletableFuture<Void> uninstallPlugin(NoteBytes pluginId, AsyncNoteBytesWriter progressWriter) {
-        PluginMetaData metadata = m_pluginRegistry.getPlugin(pluginId);
+    public CompletableFuture<OSGiPluginMetaData> installPlugin(
+        OSGiPluginRelease release, 
+        boolean enabled, 
+        StreamProgressTracker tracker
+    ) {
+        System.out.println("Starting installation of: " + release.getPluginInfo().getName() + 
+            " version " + release.getTagName());
+     
+     
+        return release.getPluginNoteFile(m_appData).thenCompose(noteFile -> {
+                return downloadToNoteFile(release.getDownloadUrl(), noteFile, tracker)
+                    .thenApply(_ -> {
+                        // Create metadata and register
+                        OSGiPluginMetaData metadata = new OSGiPluginMetaData(release, enabled);
+                        return metadata;
+                    });
+            })
+            .thenCompose(metadata -> 
+                m_pluginRegistry.registerPlugin(metadata)
+                    .thenApply(_ -> metadata)
+            )
+            .thenApply(metadata -> {
+                // Update group manager
+                m_updateLoader.loadAvailableApps()
+                    .thenAccept(apps -> m_groupManager.buildFromRegistry(m_pluginRegistry, apps));
+                return metadata;
+            });
+    }
+    
+    /**
+     * Download a file from URL to a NoteFile.
+     */
+    private CompletableFuture<NoteBytesObject> downloadToNoteFile(
+        String downloadUrl, 
+        NoteFile noteFile,
+        StreamProgressTracker progressTracker
+    ) {
+        PipedOutputStream outputStream = new PipedOutputStream();
+        
+        CompletableFuture<Void> downloadFuture = UrlStreamHelpers.transferUrlStream(
+            downloadUrl, outputStream, progressTracker, TaskUtils.getVirtualExecutor()
+        );
+        
+        CompletableFuture<NoteBytesObject> writeFuture = noteFile.writeOnly(outputStream);
+        
+        return CompletableFuture.allOf(downloadFuture, writeFuture)
+            .thenCompose(v -> writeFuture);
+    }
+    
+    /**
+     * Uninstall a plugin by removing it from the registry and deleting its NoteFile.
+     */
+    public CompletableFuture<Void> uninstallPlugin(String pluginId) {
+        OSGiPluginMetaData metadata = m_pluginRegistry.getPlugin(pluginId);
         if (metadata == null) {
             return CompletableFuture.failedFuture(
-                new IllegalArgumentException("Plugin not found: " + pluginId.getAsString())
+                new IllegalArgumentException("Plugin not found: " + pluginId)
             );
         }
         
-        return unloadPlugin(pluginId)
-            .thenAccept(v -> m_pluginRegistry.unregisterPlugin(pluginId))
-            .thenCompose(v -> m_pluginDownloader.deletePluginJar(metadata.geNotePath(), progressWriter))
-            .thenRun(() -> System.out.println("Plugin uninstalled: " + pluginId.getAsString()));
-    }
-    
-    /**
-     * Enable a plugin (and load it if not already loaded).
-     */
-    public CompletableFuture<Void> enablePlugin(NoteBytes pluginId) {
-        return m_pluginRegistry.setPluginEnabled(pluginId, true)
-            .thenCompose(v -> {
-                PluginMetaData metadata = m_pluginRegistry.getPlugin(pluginId);
-                if (metadata != null && !m_loadedBundles.containsKey(pluginId)) {
-                    return loadPlugin(metadata)
-                        .thenAccept(bundle -> {
-                            if (bundle != null) {
-                                m_loadedBundles.put(pluginId, bundle);
-                            }
-                        });
-                }
-                return CompletableFuture.completedFuture(null);
+        System.out.println("Uninstalling plugin: " + pluginId);
+        
+        // Unregister from registry
+        return m_pluginRegistry.unregisterPlugin(pluginId)
+            .thenCompose(_ -> m_appData.deleteNoteFilePath(metadata.getPluginNotePath(), false, null))
+            .thenRun(() -> {
+                // Update group manager
+                m_updateLoader.loadAvailableApps()
+                    .thenAccept(apps -> m_groupManager.buildFromRegistry(m_pluginRegistry, apps));
+                System.out.println("Plugin uninstalled: " + pluginId);
             });
     }
     
     /**
-     * Disable a plugin (unload but keep installed).
+     * Enable a plugin (mark as enabled in registry).
+     * Only one version of the same app can be enabled at a time.
      */
-    public CompletableFuture<Void> disablePlugin(NoteBytes pluginId) {
-        return unloadPlugin(pluginId)
-            .thenCompose(v -> m_pluginRegistry.setPluginEnabled(pluginId, false));
+    public CompletableFuture<Void> enablePlugin(String pluginId) {
+        return m_pluginRegistry.setPluginEnabled(pluginId, true)
+            .thenRun(() -> {
+                // Update group manager
+                m_updateLoader.loadAvailableApps()
+                    .thenAccept(apps -> m_groupManager.buildFromRegistry(m_pluginRegistry, apps));
+                System.out.println("Plugin enabled: " + pluginId);
+            });
+    }
+    
+    /**
+     * Disable a plugin (mark as disabled in registry).
+     */
+    public CompletableFuture<Void> disablePlugin(String pluginId) {
+        return m_pluginRegistry.setPluginEnabled(pluginId, false)
+            .thenRun(() -> {
+                // Update group manager
+                m_updateLoader.loadAvailableApps()
+                    .thenAccept(apps -> m_groupManager.buildFromRegistry(m_pluginRegistry, apps));
+                System.out.println("Plugin disabled: " + pluginId);
+            });
     }
     
     /**
      * Get all installed plugins.
      */
-    public List<PluginMetaData> getInstalledPlugins() {
+    public List<OSGiPluginMetaData> getInstalledPlugins() {
         return m_pluginRegistry.getAllPlugins();
     }
     
     /**
      * Check if a plugin is installed.
      */
-    public boolean isPluginInstalled(NoteBytes pluginId) {
+    public boolean isPluginInstalled(String pluginId) {
         return m_pluginRegistry.isPluginInstalled(pluginId);
     }
     
     /**
-     * Check if a plugin is loaded.
+     * Shutdown - close all resources.
      */
-    public boolean isPluginLoaded(NoteBytes pluginId) {
-        return m_loadedBundles.containsKey(pluginId);
-    }
-    
-    /**
-     * Load all enabled plugins at startup.
-     */
-    private CompletableFuture<Map<NoteBytes, org.osgi.framework.Bundle>> loadEnabledPlugins() {
-        List<PluginMetaData> enabledPlugins = m_pluginRegistry.getEnabledPlugins();
-        
-        if (enabledPlugins.isEmpty()) {
-            return CompletableFuture.completedFuture(new ConcurrentHashMap<>());
-        }
-        
-        ConcurrentHashMap<NoteBytes, org.osgi.framework.Bundle> bundles = new ConcurrentHashMap<>();
-        
-        List<CompletableFuture<Void>> loadFutures = new ArrayList<>();
-        for (PluginMetaData metadata : enabledPlugins) {
-            CompletableFuture<Void> loadFuture = loadPlugin(metadata)
-                .thenAccept(bundle -> {
-                    if (bundle != null) {
-                        bundles.put(metadata.getPluginId(), bundle);
-                    }
-                })
-                .exceptionally(error -> {
-                    System.err.println("Failed to load plugin " + 
-                        metadata.getPluginId().getAsString() + ": " + error.getMessage());
-                    return null;
-                });
-            loadFutures.add(loadFuture);
-        }
-        
-        return CompletableFuture.allOf(loadFutures.toArray(new CompletableFuture[0]))
-            .thenApply(v -> bundles);
-    }
-    
-    /**
-     * Load a single plugin.
-     */
-    private CompletableFuture<org.osgi.framework.Bundle> loadPlugin(PluginMetaData metadata) {
-        return m_appData.getNoteFile(metadata.geNotePath())
-            .thenCompose(noteFile -> {
-                // Use OSGiPluginFactory to load from NoteFile
-                // This will need to be implemented in OSGiPluginFactory
-                return loadPluginFromNoteFile(metadata.getPluginId(), noteFile);
-            });
-    }
-    
-    /**
-     * Load plugin bundle from NoteFile (placeholder - to be implemented in OSGiPluginFactory).
-     */
-    private CompletableFuture<org.osgi.framework.Bundle> loadPluginFromNoteFile(
-        NoteBytes pluginId, 
-        io.netnotes.engine.noteFiles.NoteFile noteFile
-    ) {
-        // TODO: Implement in OSGiPluginFactory
-        // For now, return a completed future
-        System.out.println("Loading plugin bundle from NoteFile: " + pluginId.getAsString());
-        
-        // This should:
-        // 1. Read JAR from NoteFile
-        // 2. Install bundle in OSGi framework
-        // 3. Start bundle
-        // 4. Return bundle reference
-        
-        return CompletableFuture.completedFuture(null);
-    }
-    
-    /**
-     * Unload a plugin bundle.
-     */
-    private CompletableFuture<Void> unloadPlugin(NoteBytes pluginId) {
-        org.osgi.framework.Bundle bundle = m_loadedBundles.remove(pluginId);
-        if (bundle != null) {
-            return CompletableFuture.runAsync(() -> {
-                try {
-                    bundle.stop();
-                    bundle.uninstall();
-                    System.out.println("Unloaded plugin: " + pluginId.getAsString());
-                } catch (Exception e) {
-                    System.err.println("Error unloading plugin: " + e.getMessage());
-                    throw new RuntimeException("Failed to unload plugin", e);
-                }
-            }, m_appData.getExecService());
-        }
-        return CompletableFuture.completedFuture(null);
-    }
-    
-    /**
-     * Shutdown - unload all plugins and close resources.
-     */
-    public CompletableFuture<Void> shutdown(AsyncNoteBytesWriter progressWriter) {
-        List<CompletableFuture<Void>> futures = new ArrayList<>();
-        
+    public CompletableFuture<Void> shutdown() {
         // Close all open app boxes
-        for (Map.Entry<NoteBytes, AppBox> entry : m_openAppBoxes.entrySet()) {
-            futures.add(entry.getValue().shutdown());
+        for (AppBox appBox : m_openAppBoxes.values()) {
+            appBox.shutdown();
+        }
+        m_openAppBoxes.clear();
+        
+        // Shutdown registry
+        if (m_pluginRegistry != null) {
+            m_pluginRegistry.shutdown();
         }
         
-        // Unload all plugins
-        for (NoteBytes pluginId : new ArrayList<>(m_loadedBundles.keySet())) {
-            futures.add(unloadPlugin(pluginId));
-        }
-        
-        return CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
-            .thenRun(() -> {
-                try {
-                    m_osgiFactory.shutdown();
-                } catch (Exception e) {
-                    System.err.println("Error shutting down OSGi: " + e.getMessage());
-                }
-            });
+        return CompletableFuture.completedFuture(null);
+    }
+
+    @Override
+    public CompletableFuture<Void> shutdown(AsyncNoteBytesWriter progressWriter) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'shutdown'");
     }
 }

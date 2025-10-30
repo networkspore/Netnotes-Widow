@@ -87,7 +87,11 @@ public class DeferredLayoutManager {
     // ==================== Node Registration ====================
     
     public static void register(Stage stage, Node node, LayoutCallback callback) {
-        INSTANCE.registerNode(stage, node, callback);
+        INSTANCE.registerNode(stage, node, callback, null);
+    }
+
+    public static void register(Stage stage, Node node, LayoutCallback callback, Runnable applyCallback) {
+        INSTANCE.registerNode(stage, node, callback, applyCallback);
     }
 
     public static void unregister(Node node) {
@@ -111,7 +115,7 @@ public class DeferredLayoutManager {
         }
     }
         
-    private void registerNode(Stage stage, Node node, LayoutCallback callback) {
+    private void registerNode(Stage stage, Node node, LayoutCallback callback, Runnable applyCallback) {
        
         // Auto-unregister if already registered (cleans up old relationships)
         LayoutNode existingNode = nodeRegistry.get(node);
@@ -125,7 +129,7 @@ public class DeferredLayoutManager {
         }
         
         // Create new registration
-        LayoutNode layoutNode = new LayoutNode(node, stage, callback);
+        LayoutNode layoutNode = new LayoutNode(node, stage, callback, applyCallback);
         nodeRegistry.put(node, layoutNode);
         
         // Build parent-child relationships by walking up the scene graph

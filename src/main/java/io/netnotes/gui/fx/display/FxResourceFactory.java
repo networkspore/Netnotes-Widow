@@ -73,7 +73,7 @@ public class FxResourceFactory {
 
     static{
         SvgImageLoaderFactory.install();
-        initAwtOcrFont();
+        initAwtFonts();
         Font.loadFont(FxResourceFactory.class.getResource(PRIMARY_FONT).toExternalForm(),16);
         Font.loadFont(FxResourceFactory.class.getResource(EMOJI_FONT).toExternalForm(),20);
 
@@ -89,7 +89,7 @@ public class FxResourceFactory {
         smallFont = Font.font(PRIMARY_FONT_FAMILY, 14);
     }
 
-    public static void initAwtOcrFont(){
+    public static void initAwtFonts(){
         try( 
             InputStream stream = FxResourceFactory.class.getResource(PRIMARY_FONT).openStream(); 
         ) {
@@ -99,6 +99,17 @@ public class FxResourceFactory {
         } catch (FontFormatException | IOException e) {
             LoggingHelpers.writeLogMsg(LOG_FILE, "Error registering font:", e);
         }
+
+        try( 
+            InputStream stream = FxResourceFactory.class.getResource(EMOJI_FONT).openStream(); 
+        ) {
+            java.awt.Font ocrFont = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, stream).deriveFont(48f);
+            GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+            ge.registerFont(ocrFont);
+        } catch (FontFormatException | IOException e) {
+            LoggingHelpers.writeLogMsg(LOG_FILE, "Error registering font:", e);
+        }
+
     }
     
   

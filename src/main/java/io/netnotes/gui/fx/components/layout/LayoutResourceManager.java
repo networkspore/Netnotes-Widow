@@ -153,16 +153,16 @@ public class LayoutResourceManager {
     private static class CachedLayoutResult {
         LayoutEngine.LayoutResult result;
         String instanceId;
-        long lastAccessTime;
+       // long lastAccessTime;
         
         CachedLayoutResult(LayoutEngine.LayoutResult result, String instanceId) {
             this.result = result;
             this.instanceId = instanceId;
-            this.lastAccessTime = System.currentTimeMillis();
+           // this.lastAccessTime = System.currentTimeMillis();
         }
         
         void updateAccessTime() {
-            this.lastAccessTime = System.currentTimeMillis();
+           // this.lastAccessTime = System.currentTimeMillis();
         }
     }
     

@@ -12,11 +12,20 @@ import io.netnotes.engine.noteBytes.NoteString;
 import io.netnotes.engine.noteBytes.collections.NoteBytesPair;
 import io.netnotes.engine.noteBytes.processing.ByteDecoding;
 import io.netnotes.engine.noteBytes.processing.NoteBytesMetaData;
+import io.netnotes.gui.fx.components.images.scaling.ScalingUtils;
 import io.netnotes.gui.fx.components.images.scaling.ScalingUtils.ScalingAlgorithm;
+import io.netnotes.gui.fx.display.FxResourceFactory;
 import io.netnotes.gui.fx.noteBytes.NoteBytesImage;
 
-import java.awt.*;
+import java.awt.Color;
+import java.awt.Font;
+import java.awt.Insets;
+import java.awt.Rectangle;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Foundation for a unified layout/editing system.
@@ -31,7 +40,12 @@ import java.math.BigDecimal;
  * 6. Binary-first - Leverage NoteBytes type system, no text parsing
  */
 public class LayoutSegment {
-    
+    private List<RichTextSpan> m_textSpans = null;
+    private LinkProperties m_linkProperties = null;
+    private transient BufferedImage m_cachedScaledImage = null;
+    private transient int m_cachedImageWidth = -1;
+    private transient int m_cachedImageHeight = -1;
+    private transient ScalingAlgorithm m_cachedAlgorithm = null;
     // ========== Enums ==========
     
     /**
@@ -42,8 +56,9 @@ public class LayoutSegment {
         CONTAINER(1),
         IMAGE(2),
         SPACER(3),
-        COMPONENT(4);
-        
+        COMPONENT(4),
+        INLINE_CONTAINER(5);
+
         private final int value;
         
         SegmentType(int value) { this.value = value; }
@@ -56,6 +71,10 @@ public class LayoutSegment {
             return TEXT;
         }
     }
+
+
+
+
     
     /**
      * Display mode determines layout behavior
@@ -466,7 +485,7 @@ public class LayoutSegment {
      * Style properties for text/appearance
      */
     public static class StyleProperties {
-        public String fontName = "Monospaced";
+        public String fontName = FxResourceFactory.EMOJI_FONT;
         public int fontSize = 14;
         public boolean bold = false;
         public boolean italic = false;
@@ -593,12 +612,36 @@ public class LayoutSegment {
         m_interaction = interactionNb instanceof NoteBytesObject ? 
             InteractionProperties.fromNoteBytesObject((NoteBytesObject) interactionNb) : 
             new InteractionProperties();
-        
+    
+
         // Style
         NoteBytes styleNb = m_data.get("style") != null ? m_data.get("style").getValue() : null;
         m_style = styleNb instanceof NoteBytesObject ? 
             StyleProperties.fromNoteBytesObject((NoteBytesObject) styleNb) : 
             new StyleProperties();
+
+        // Rich text spans
+        NoteBytes spansNb = m_data.get("textSpans") != null ? m_data.get("textSpans").getValue() : null;
+        if (spansNb instanceof NoteBytesArray) {
+            NoteBytesArray spansArray = (NoteBytesArray) spansNb;
+            m_textSpans = new ArrayList<>();
+            for (int i = 0; i < spansArray.size(); i++) {
+                NoteBytes spanNb = spansArray.get(i);
+                if (spanNb instanceof NoteBytesObject) {
+                    RichTextSpan span = RichTextSpan.fromNoteBytesObject((NoteBytesObject) spanNb);
+                    if (span != null) {
+                        m_textSpans.add(span);
+                    }
+                }
+            }
+        }
+        
+        // Link properties
+        NoteBytes linkNb = m_data.get("linkProperties") != null ? m_data.get("linkProperties").getValue() : null;
+        if (linkNb instanceof NoteBytesObject) {
+            m_linkProperties = LinkProperties.fromNoteBytesObject((NoteBytesObject) linkNb);
+        }
+        
         
         // Content (type-specific)
         NoteBytes contentNb = m_data.get("content") != null ? m_data.get("content").getValue() : null;
@@ -617,6 +660,20 @@ public class LayoutSegment {
                 break;
             default:
                 break;
+        }
+
+        // Text spans
+        if (m_textSpans != null && !m_textSpans.isEmpty()) {
+            NoteBytesArray spansArray = new NoteBytesArray();
+            for (RichTextSpan span : m_textSpans) {
+                spansArray.add(span.toNoteBytesObject());
+            }
+            m_data.add("textSpans", spansArray);
+        }
+        
+        // Link properties
+        if (m_linkProperties != null) {
+            m_data.add("linkProperties", m_linkProperties.toNoteBytesObject());
         }
     }
     
@@ -656,9 +713,13 @@ public class LayoutSegment {
     public LayoutProperties getLayout() { return m_layout; }
     public InteractionProperties getInteraction() { return m_interaction; }
     public StyleProperties getStyle() { return m_style; }
-    
+
+
     public NoteIntegerArray getTextContent() { return m_textContent; }
     public NoteBytesArray getChildren() { return m_children; }
+    public List<RichTextSpan> getTextSpans() { return m_textSpans; }
+    public LinkProperties getLinkProperties() { return m_linkProperties; }
+
     public NoteBytes getBinaryContent() { return m_binaryContent; }
     
     public Rectangle getBounds() { return m_bounds; }
@@ -678,13 +739,20 @@ public class LayoutSegment {
         return m_data; 
     }
     
+    private void invalidateImageCache(){
+        m_cachedScaledImage = null;
+        m_cachedImageWidth = -1;
+        m_cachedImageHeight = -1;
+        m_cachedAlgorithm = null;
+    }
+
     // ========== Binary Content Setters ==========
     
-    public void setBinaryContent(NoteBytes content) {
-        if (m_type != SegmentType.IMAGE) {
-            throw new IllegalStateException("Binary content can only be set on IMAGE segments");
-        }
+     public void setBinaryContent(NoteBytes content) {
         m_binaryContent = content;
+        
+        invalidateImageCache();
+        
         m_dataDirty = true; 
     }
     
@@ -695,7 +763,55 @@ public class LayoutSegment {
     public void setImageContent(NoteBytesImage image) {
         setBinaryContent(image);
     }
-    
+
+    /**
+     * Get scaled image with caching at segment level.
+     * Cache invalidates when binary content changes or dimensions change.
+     */
+    public BufferedImage getScaledImage(int targetWidth, int targetHeight) throws IOException {
+        // Check cache validity
+        if (m_cachedScaledImage != null && 
+            m_cachedImageWidth == targetWidth && 
+            m_cachedImageHeight == targetHeight &&
+            m_cachedAlgorithm == m_layout.scalingAlgorithm) {
+            return m_cachedScaledImage;
+        }
+        
+        // Get original image (already cached in NoteBytesImage)
+        NoteBytes content = getBinaryContent();
+        if (content == null) return null;
+        
+        NoteBytesImage image = content instanceof NoteBytesImage ? 
+            (NoteBytesImage) content : new NoteBytesImage(content.get(), true);
+        
+        if (!(content instanceof NoteBytesImage)) {
+            image.clearBytes();
+            setBinaryContent(image);
+        }
+        
+        BufferedImage original = image.getAsBufferedImage();
+        
+        // Don't scale if already correct size
+        if (original.getWidth() == targetWidth && original.getHeight() == targetHeight) {
+            m_cachedScaledImage = original;
+            m_cachedImageWidth = targetWidth;
+            m_cachedImageHeight = targetHeight;
+            m_cachedAlgorithm = m_layout.scalingAlgorithm;
+            return original;
+        }
+        
+        // Scale and cache
+        m_cachedScaledImage = ScalingUtils.scaleImage(
+            original, targetWidth, targetHeight, m_layout.scalingAlgorithm
+        );
+        m_cachedImageWidth = targetWidth;
+        m_cachedImageHeight = targetHeight;
+        m_cachedAlgorithm = m_layout.scalingAlgorithm;
+        
+        return m_cachedScaledImage;
+    }
+
+
     // ========== Text Content Setters ==========
     
     public void setTextContent(String text) {
@@ -716,6 +832,84 @@ public class LayoutSegment {
         m_textContent = content;
         m_dataDirty = true;
     }
+
+    // ========== Rich Text Management ==========
+    
+    public void setTextSpans(List<RichTextSpan> spans) {
+        m_textSpans = spans;
+        m_dataDirty = true;
+    }
+    
+    public void addTextSpan(RichTextSpan span) {
+        if (m_textSpans == null) {
+            m_textSpans = new ArrayList<>();
+        }
+        m_textSpans.add(span);
+        m_dataDirty = true;
+    }
+    
+    public void clearTextSpans() {
+        if (m_textSpans != null) {
+            m_textSpans.clear();
+        }
+        m_dataDirty = true;
+    }
+    
+    public boolean hasTextSpans() {
+        return m_textSpans != null && !m_textSpans.isEmpty();
+    }
+    
+    /**
+     * Get the style at a specific character position
+     */
+    public LayoutSegment.StyleProperties getStyleAt(int position) {
+        if (m_textSpans == null) {
+            return m_style;
+        }
+        
+        for (RichTextSpan span : m_textSpans) {
+            if (span.contains(position)) {
+                return span.getStyle();
+            }
+        }
+        
+        return m_style;
+    }
+    
+    /**
+     * Adjust spans after text insertion
+     */
+    public void adjustSpansForInsert(int position, int length) {
+        if (m_textSpans == null) return;
+        
+        for (RichTextSpan span : m_textSpans) {
+            span.adjustForInsert(position, length);
+        }
+        m_dataDirty = true;
+    }
+    
+    /**
+     * Adjust spans after text deletion, removing invalidated spans
+     */
+    public void adjustSpansForDelete(int position, int length) {
+        if (m_textSpans == null) return;
+        
+        for (RichTextSpan span : m_textSpans) {
+            span.adjustForDelete(position, length);
+        }
+        
+        // Remove invalidated spans
+        m_textSpans.removeIf(RichTextSpan::shouldRemove);
+        m_dataDirty = true;
+    }
+    
+    // ========== Link Management ==========
+    
+    public void setLinkProperties(LinkProperties props) {
+        m_linkProperties = props;
+        m_dataDirty = true;
+    }
+  
     
     // ========== Utility Methods ==========
     
