@@ -43,7 +43,7 @@ public class LayoutSegment {
     private List<RichTextSpan> m_textSpans = null;
     private LinkProperties m_linkProperties = null;
     private GridLayoutProperties m_gridLayout = null;
-
+    private GridItemProperties m_gridItem = null;
 
     // ========== Image Caching ==========
     private transient BufferedImage m_cachedScaledImage = null;
@@ -631,6 +631,11 @@ public class LayoutSegment {
             m_gridLayout = GridLayoutProperties.fromNoteBytesObject((NoteBytesObject) gridLayoutNb);
         }
 
+        NoteBytes gridItemNb = m_data.get("gridItem") != null ? m_data.get("gridItem").getValue() : null;
+        if (gridItemNb instanceof NoteBytesObject) {
+            m_gridItem = GridItemProperties.fromNoteBytesObject((NoteBytesObject) gridItemNb);
+        }
+
         // Rich text spans
         NoteBytes spansNb = m_data.get("textSpans") != null ? m_data.get("textSpans").getValue() : null;
         if (spansNb instanceof NoteBytesArray) {
@@ -698,6 +703,11 @@ public class LayoutSegment {
         if (m_gridLayout != null) {
             m_data.add("gridLayout", m_gridLayout.toNoteBytesObject());
         }
+
+        if (m_gridItem != null) {
+            m_data.add("gridItem", m_gridItem.toNoteBytesObject());
+        }
+
         
         // Content
         switch (m_type) {
@@ -728,6 +738,7 @@ public class LayoutSegment {
     public InteractionProperties getInteraction() { return m_interaction; }
     public StyleProperties getStyle() { return m_style; }
     public GridLayoutProperties getGridLayout() { return m_gridLayout; }
+    public GridItemProperties getGridItem() { return m_gridItem; }
 
     public NoteIntegerArray getTextContent() { return m_textContent; }
     public NoteBytesArray getChildren() { return m_children; }
@@ -831,6 +842,11 @@ public class LayoutSegment {
         m_dataDirty = true;
     }
 
+    public void setGridItem(GridItemProperties gridItem) {
+        m_gridItem = gridItem;
+        m_dataDirty = true;
+    }
+
     // ========== Text Content Setters ==========
     
     public void setTextContent(String text) {
@@ -882,6 +898,10 @@ public class LayoutSegment {
         return m_gridLayout != null;
     }
     
+    public boolean hasGridItem() {
+        return m_gridItem != null;
+    }
+
     /**
      * Get the style at a specific character position
      */
@@ -1116,6 +1136,32 @@ public class LayoutSegment {
 
     public LayoutSegment withGridLayout(GridLayoutProperties gridLayout) {
         m_gridLayout = gridLayout;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withGridItem(GridItemProperties gridItem) {
+        m_gridItem = gridItem;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withGridPosition(int column, int row) {
+        if (m_gridItem == null) {
+            m_gridItem = new GridItemProperties();
+        }
+        m_gridItem.column = column;
+        m_gridItem.row = row;
+        m_dataDirty = true;
+        return this;
+    }
+
+    public LayoutSegment withGridSpan(int columnSpan, int rowSpan) {
+        if (m_gridItem == null) {
+            m_gridItem = new GridItemProperties();
+        }
+        m_gridItem.columnSpan = columnSpan;
+        m_gridItem.rowSpan = rowSpan;
         m_dataDirty = true;
         return this;
     }

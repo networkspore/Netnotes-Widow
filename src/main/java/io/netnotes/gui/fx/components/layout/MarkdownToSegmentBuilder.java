@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
 
 /**
  * Converts Markdown to LayoutSegment structures.
- * Supports: headings, bold, italic, links, images, lists, code blocks
+ * Supports: headings, bold, italic, links, images, lists, code blocks, tables
  */
 public class MarkdownToSegmentBuilder {
     
@@ -24,6 +24,7 @@ public class MarkdownToSegmentBuilder {
     private static final Pattern CODE_PATTERN = Pattern.compile("`([^`]+)`");
     private static final Pattern LIST_PATTERN = Pattern.compile("^[*+-]\\s+(.+)$");
     private static final Pattern ORDERED_LIST_PATTERN = Pattern.compile("^\\d+\\.\\s+(.+)$");
+    private static final Pattern TABLE_SEPARATOR_PATTERN = Pattern.compile("^\\|?\\s*:?-+:?\\s*(?:\\|\\s*:?-+:?\\s*)*\\|?$");
     
     /**
      * Parse Markdown string into segments
@@ -39,7 +40,8 @@ public class MarkdownToSegmentBuilder {
         boolean inCodeBlock = false;
         StringBuilder codeBlockContent = new StringBuilder();
         
-        for (int i = 0; i < lines.length; i++) {
+        int i = 0;
+        while (i < lines.length) {
             String line = lines[i];
             
             // Code blocks
@@ -53,17 +55,32 @@ public class MarkdownToSegmentBuilder {
                     // Start of code block
                     inCodeBlock = true;
                 }
+                i++;
                 continue;
             }
             
             if (inCodeBlock) {
                 codeBlockContent.append(line).append("\n");
+                i++;
                 continue;
             }
             
             // Empty line
             if (line.trim().isEmpty()) {
+                i++;
                 continue;
+            }
+            
+            // Check for table (requires looking ahead for separator line)
+            if (i + 1 < lines.length && isTableRow(line)) {
+                String nextLine = lines[i + 1];
+                if (isTableSeparator(nextLine)) {
+                    // This is a table!
+                    TableParseResult table = parseTable(lines, i);
+                    segments.add(createTableGrid(table).getData());
+                    i = table.endIndex;
+                    continue;
+                }
             }
             
             // Check for standalone images (must come before links since images contain link syntax)
@@ -72,6 +89,7 @@ public class MarkdownToSegmentBuilder {
                 String alt = imageMatcher.group(1);
                 String src = imageMatcher.group(2);
                 segments.add(createImage(src, alt).getData());
+                i++;
                 continue;
             }
             
@@ -81,6 +99,7 @@ public class MarkdownToSegmentBuilder {
                 int level = headingMatcher.group(1).length();
                 String text = headingMatcher.group(2);
                 segments.add(createHeading(text, level).getData());
+                i++;
                 continue;
             }
             
@@ -89,6 +108,7 @@ public class MarkdownToSegmentBuilder {
             if (listMatcher.matches()) {
                 String text = listMatcher.group(1);
                 segments.add(createListItem(text, false).getData());
+                i++;
                 continue;
             }
             
@@ -96,14 +116,169 @@ public class MarkdownToSegmentBuilder {
             if (orderedListMatcher.matches()) {
                 String text = orderedListMatcher.group(1);
                 segments.add(createListItem(text, true).getData());
+                i++;
                 continue;
             }
             
             // Regular paragraph
             segments.add(createParagraph(line).getData());
+            i++;
         }
         
         return segments;
+    }
+    
+    /**
+     * Check if a line looks like a table row
+     */
+    private static boolean isTableRow(String line) {
+        String trimmed = line.trim();
+        return trimmed.contains("|") && trimmed.split("\\|").length >= 2;
+    }
+    
+    /**
+     * Check if a line is a table separator (e.g., |---|---|)
+     */
+    private static boolean isTableSeparator(String line) {
+        return TABLE_SEPARATOR_PATTERN.matcher(line.trim()).matches();
+    }
+    
+    /**
+     * Parse a markdown table starting at the given line index
+     */
+    private static TableParseResult parseTable(String[] lines, int startIndex) {
+        List<List<String>> rows = new ArrayList<>();
+        
+        // Parse header row
+        List<String> headerRow = parseTableRow(lines[startIndex]);
+        rows.add(headerRow);
+        
+        int maxColumns = headerRow.size();
+        
+        // Skip separator line
+        int currentIndex = startIndex + 2;
+        
+        // Parse data rows
+        while (currentIndex < lines.length) {
+            String line = lines[currentIndex];
+            
+            if (line.trim().isEmpty() || !isTableRow(line)) {
+                break; // End of table
+            }
+            
+            List<String> row = parseTableRow(line);
+            rows.add(row);
+            maxColumns = Math.max(maxColumns, row.size());
+            currentIndex++;
+        }
+        
+        return new TableParseResult(rows, maxColumns, currentIndex);
+    }
+    
+    /**
+     * Parse a single table row
+     */
+    private static List<String> parseTableRow(String line) {
+        List<String> cells = new ArrayList<>();
+        
+        // Remove leading/trailing pipes and split
+        String trimmed = line.trim();
+        if (trimmed.startsWith("|")) {
+            trimmed = trimmed.substring(1);
+        }
+        if (trimmed.endsWith("|")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        
+        String[] parts = trimmed.split("\\|");
+        for (String part : parts) {
+            cells.add(part.trim());
+        }
+        
+        return cells;
+    }
+    
+    /**
+     * Create a grid layout from parsed table data
+     */
+    private static LayoutSegment createTableGrid(TableParseResult table) {
+        LayoutSegment container = new LayoutSegment(LayoutSegment.SegmentType.CONTAINER);
+        container.getLayout().display = LayoutSegment.Display.BLOCK;
+        container.getLayout().margin = new Insets(0, 0, 10, 0);
+        
+        // Create grid layout properties
+        GridLayoutProperties gridProps = new GridLayoutProperties();
+        gridProps.direction = GridLayoutProperties.Direction.ROW;
+        
+        // Define columns - equal width
+        for (int i = 0; i < table.columnCount; i++) {
+            gridProps.columns.add(GridLayoutProperties.TrackSize.fr(1.0));
+        }
+        
+        // Define rows - auto sizing
+        for (int i = 0; i < table.rows.size(); i++) {
+            gridProps.rows.add(GridLayoutProperties.TrackSize.auto());
+        }
+        
+        // Add gap between cells
+        gridProps.gap = new GridLayoutProperties.Gap(5, 5);
+        
+        // Enable column resizing for tables
+        gridProps.resizableColumns = true;
+        gridProps.resizableRows = false;
+        
+        container.setGridLayout(gridProps);
+        
+        // Create cells
+        for (int rowIdx = 0; rowIdx < table.rows.size(); rowIdx++) {
+            List<String> rowCells = table.rows.get(rowIdx);
+            boolean isHeader = (rowIdx == 0);
+            
+            for (int colIdx = 0; colIdx < rowCells.size(); colIdx++) {
+                String cellText = rowCells.get(colIdx);
+                
+                // Create cell container
+                LayoutSegment cell = new LayoutSegment(LayoutSegment.SegmentType.CONTAINER);
+                cell.getLayout().display = LayoutSegment.Display.BLOCK;
+                cell.getLayout().padding = new Insets(5, 5, 5, 5);
+                
+                // Add border
+                cell.getLayout().borderWidth = 1;
+                cell.getLayout().borderColor = Color.LIGHT_GRAY;
+                
+                // Header styling
+                if (isHeader) {
+                    cell.getLayout().backgroundColor = new Color(240, 240, 240);
+                }
+                
+                // Set grid position
+                GridItemProperties itemProps = new GridItemProperties();
+                itemProps.column = colIdx + 1; // 1-based
+                itemProps.row = rowIdx + 1;
+                itemProps.columnSpan = 1;
+                itemProps.rowSpan = 1;
+                cell.setGridItem(itemProps);
+                
+                // Create text content with inline formatting
+                LayoutSegment textSegment = new LayoutSegment(LayoutSegment.SegmentType.TEXT);
+                textSegment.getLayout().display = LayoutSegment.Display.INLINE;
+                
+                // Parse inline markdown in cell
+                InlineParseResult parseResult = parseInlineFormatting(cellText);
+                textSegment.setTextContent(parseResult.text);
+                textSegment.setTextSpans(parseResult.spans);
+                
+                // Header cells are bold
+                if (isHeader) {
+                    textSegment.getStyle().bold = true;
+                }
+                
+                cell.addChild(textSegment);
+                container.addChild(cell);
+            }
+        }
+        
+        return container;
     }
     
     /**
@@ -455,14 +630,25 @@ public class MarkdownToSegmentBuilder {
         List<RichTextSpan> spans;
         String linkUrl; // First link URL found (for segments that are entirely a link)
         
-        /*InlineParseResult(String text, List<RichTextSpan> spans) {
-            this(text, spans, null);
-        }*/
-        
         InlineParseResult(String text, List<RichTextSpan> spans, String linkUrl) {
             this.text = text;
             this.spans = spans;
             this.linkUrl = linkUrl;
+        }
+    }
+    
+    /**
+     * Result of table parsing
+     */
+    private static class TableParseResult {
+        List<List<String>> rows;
+        int columnCount;
+        int endIndex; // Line index after the table
+        
+        TableParseResult(List<List<String>> rows, int columnCount, int endIndex) {
+            this.rows = rows;
+            this.columnCount = columnCount;
+            this.endIndex = endIndex;
         }
     }
 }
